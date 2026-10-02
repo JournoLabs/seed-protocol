@@ -199,13 +199,13 @@ The port is done when the Hardhat 3 run reaches the same **116 passing**.
 
 | Suite | Tests (HH2 baseline) | Hardhat 3 file | Ported | Dropped (reason) |
 |-------|-----------:|----------------|-------:|------------------|
-| `ManagedAccountHarness.test.js` | 12 | `ManagedAccountHarness.test.ts` | | |
-| `SeedProtocolExecutor.test.js` | 39 | `SeedProtocolExecutor.test.ts` | | localhost-mode branches (H7) |
-| `SeedProtocolExtension.access.test.js` | 18 | `SeedProtocolExtension.access.test.ts` | | |
-| `SeedProtocolExtension.crossref.test.js` | 20 | `SeedProtocolExtension.crossref.test.ts` | | |
-| `SeedExecutorRouterExtension.test.js` | 22 | `SeedExecutorRouterExtension.test.ts` | | |
+| `ManagedAccountHarness.test.js` | 12 | `ManagedAccountHarness.test.ts` | 12 | |
+| `SeedProtocolExecutor.test.js` | 39 | `SeedProtocolExecutor.test.ts` | 39 | localhost-mode branches (H7) |
+| `SeedProtocolExtension.access.test.js` | 18 | `SeedProtocolExtension.access.test.ts` | 18 | |
+| `SeedProtocolExtension.crossref.test.js` | 20 | `SeedProtocolExtension.crossref.test.ts` | 20 | |
+| `SeedExecutorRouterExtension.test.js` | 22 | `SeedExecutorRouterExtension.test.ts` | 22 | |
 | `SeedProtocolExtension.gas.test.js` | 5 | `SeedProtocolExtension.gas.test.ts` | | |
-| `SeedProtocol.ts` | 5 | — | | stale POC suite (H8) |
+| `SeedProtocol.ts` | 5 | — | deleted | stale POC suite (H8) |
 
 ## 5. Risks and things to verify
 
@@ -235,3 +235,6 @@ The port is done when the Hardhat 3 run reaches the same **116 passing**.
 - **Step 1:** Hardhat 3.18.1 with `hardhat-toolbox-mocha-ethers` 4.0.0. The config loads and type-checks. The in-process network keeps `chainId: 1337`. `allowUnlimitedContractSize` is dropped, since every contract is under 24 KB.
 - **Step 2:** `bun patch` for `@thirdweb-dev/dynamic-contracts@1.2.5` (re-applies on a clean install), and the wrapper `.sol` files are removed. `hardhat build` is clean: 17 files, solc 0.8.27, `paris`. The only warnings are thirdweb's (payable fallback without receive).
 - **Step 3 (bytecode parity):** all 14 deployable artifacts, the 4 production contracts plus EAS, SchemaRegistry, the thirdweb account stack, the mock and the libraries, match Hardhat 2 in both runtime and initcode once metadata is blanked. For the production contracts the raw bytecode has the same length and differs only inside the CBOR metadata blob. Negative control: a build with `runs: 999` makes the script report all 4 production contracts as different and exit 1.
+- **Step 4 (fixtures):** the four fixtures are TypeScript ESM. Fixtures that need a network come from factories that take the test file's connection (`createManagedAccountFixtures`, `createExecutorEASFixture`, `createExtensionEASFixture`); the pure helpers are plain exports. `DynamicContract` keeps the merged-ABI account's methods typed through `.connect()`. `tsconfig` lists `types: ["node", "mocha"]`, because an implicit `@types/minimatch` had made `tsc` stop before checking any code.
+- **Step 5 (suites):** all five suites are ported to `.test.ts`, one commit each: **111 passing**, the same as the Hardhat 2 `npm test` baseline, run together in one process. `test/` is type-clean, `test/SeedProtocol.ts` is deleted (H8), and the unused `callExecutorFromAccountStatic` helper was dropped. One test is renamed, since its manifest branch is gone (H7): "should track separate EAS addresses per account". The router-guard mutation check was re-run against the ported suite: all 10 guards are caught (`executeFromExecutor` caller / installed / mode / min length / target / selector / value, double install, double uninstall, install-uninstall auth).
+- **Known gap until step 7:** `tsc` reports errors in `scripts/`, which are Hardhat 2 scripts (H9). CI type-checking (step 8) must cover `test/` only until the deploy branch.
