@@ -3,32 +3,35 @@
  * ManagedAccount. See docs/security/extension-access-control-plan.md (F1, F2, D1, D2, D7).
  *
  * Allowed publishing paths (admin EOA, admin UserOp, session-key UserOp) are
- * covered in ManagedAccountHarness.test.js; this file covers what must be refused.
+ * covered in ManagedAccountHarness.test.ts; this file covers what must be refused.
  */
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {
-  managedAccountFixture,
-  managedAccountV2Fixture,
-  grantSessionKey,
-  revokeSessionKey,
-  sendUserOp,
-  expectCustomError,
+import { expect } from "chai";
+import { Interface } from "ethers";
+import { network } from "hardhat";
+import {
+  type ManagedAccountSetup,
   attestedEvents,
   buildPublishRequests,
-} = require("./fixtures/managedAccountFixture");
+  createManagedAccountFixtures,
+  expectCustomError,
+} from "./fixtures/managedAccountFixture.js";
 
-const LEGACY_SET_EAS = new ethers.Interface(["function setEas(address _eas) payable returns (string)"]);
+const connection = await network.create();
+const { ethers, networkHelpers } = connection;
+const { loadFixture } = networkHelpers;
+const { managedAccountFixture, managedAccountV2Fixture, grantSessionKey, revokeSessionKey, sendUserOp } =
+  createManagedAccountFixtures(connection);
 
-function revokeCallData(eas, schema, uid) {
+const LEGACY_SET_EAS = new Interface(["function setEas(address _eas) payable returns (string)"]);
+
+function revokeCallData(eas: ManagedAccountSetup["eas"], schema: string, uid: string) {
   return eas.interface.encodeFunctionData("revoke", [{ schema, data: { uid, value: 0n } }]);
 }
 
 const VARIANTS = [
   { label: "SeedProtocolExtension (legacy)", contractName: "SeedProtocolExtension", fixture: managedAccountFixture },
   { label: "SeedProtocolExtensionV2", contractName: "SeedProtocolExtensionV2", fixture: managedAccountV2Fixture },
-];
+] as const;
 
 for (const { label, contractName, fixture } of VARIANTS) {
   describe(`${label} access control`, function () {
@@ -68,7 +71,7 @@ for (const { label, contractName, fixture } of VARIANTS) {
         const setup = await loadFixture(fixture);
         await expect(
           setup.seedImpl.connect(setup.stranger).multiPublish(buildPublishRequests(setup)),
-        ).to.be.reverted;
+        ).to.be.revert(ethers);
       });
     });
 
@@ -107,7 +110,7 @@ for (const { label, contractName, fixture } of VARIANTS) {
         const Extension = await ethers.getContractFactory(contractName);
         const [eas] = await expectCustomError(
           Extension.deploy(setup.stranger.address),
-          Extension.interface,
+          Extension.interface as Interface,
           "InvalidEAS",
         );
         expect(eas).to.equal(setup.stranger.address);
