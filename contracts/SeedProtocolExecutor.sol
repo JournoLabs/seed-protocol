@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
+
+import "../interfaces/IEAS.sol";
+import {SeedPublishLib} from "./SeedPublishLib.sol";
 
 
 // ============================================================================
@@ -50,6 +53,12 @@ interface IERC7579Account {
         ModeCode mode,
         bytes calldata executionCalldata
     ) external payable returns (bytes[] memory returnData);
+
+    function isModuleInstalled(
+        uint256 moduleTypeId,
+        address module,
+        bytes calldata additionalContext
+    ) external view returns (bool);
 }
 
 /// @dev ERC-7579 module interface - all modules must implement this
@@ -57,34 +66,6 @@ interface IERC7579Module {
     function onInstall(bytes calldata data) external;
     function onUninstall(bytes calldata data) external;
     function isModuleType(uint256 moduleTypeId) external view returns (bool);
-}
-
-// ============================================================================
-// EAS Interfaces (unchanged from original)
-// ============================================================================
-
-struct AttestationRequestData {
-    address recipient;
-    uint64 expirationTime;
-    bool revocable;
-    bytes32 refUID;
-    bytes data;
-    uint256 value;
-}
-
-struct AttestationRequest {
-    bytes32 schema;
-    AttestationRequestData data;
-}
-
-struct MultiAttestationRequest {
-    bytes32 schema;
-    AttestationRequestData[] data;
-}
-
-interface IEAS_SeedProtocol {
-    function attest(AttestationRequest calldata request) external payable returns (bytes32);
-    function multiAttest(MultiAttestationRequest[] calldata multiRequests) external payable returns (bytes32[] memory);
 }
 
 // ============================================================================
@@ -129,8 +110,20 @@ struct CreatedAttestationResult {
  *        which causes the account to make the external call to EAS. The account
  *        is still msg.sender to EAS, preserving attestation ownership.
  *
+ *      Every function acts on `msg.sender` as the account, so only the account
+ *      itself (i.e. its admins or session keys allowed to target this module) can
+ *      drive it. Publishing follows the same rules as the Seed extensions
+ *      (SeedPublishLib): everything created is revocable, and cross-references
+ *      must point at the current or a later request.
+ *
+ *      Value: only `multiPublish` is payable. `msg.value` is passed back to the
+ *      account with the first EAS batch that needs it and the module never holds
+ *      ETH; value no batch consumes is rejected.
+ *
  *      This module is compatible with any ERC-7579 compliant smart account
- *      (thirdweb, Safe + Safe7579 adapter, Biconomy, ZeroDev, etc.)
+ *      (thirdweb, Safe + Safe7579 adapter, Biconomy, ZeroDev, etc.) that marks a
+ *      module installed before calling `onInstall` and uninstalled before calling
+ *      `onUninstall`, as the ERC-7579 reference implementation does.
  */
 contract SeedProtocolExecutor is IERC7579Module {
 
@@ -152,6 +145,12 @@ contract SeedProtocolExecutor is IERC7579Module {
     error InvalidEASAddress();
     error AttestationFailed();
     error MultiAttestFailed();
+    /// @dev `onInstall` called outside of the account installing this module.
+    error NotInstalledOnAccount(address account);
+    /// @dev `onUninstall` called outside of the account uninstalling this module.
+    error StillInstalledOnAccount(address account);
+    /// @dev `msg.value` that no EAS batch consumed; rejected so the module never holds ETH.
+    error UnusedValue(uint256 value);
 
     // ========================================================================
     // Storage
@@ -168,8 +167,14 @@ contract SeedProtocolExecutor is IERC7579Module {
 
     /// @inheritdoc IERC7579Module
     /// @dev Called by the smart account when installing this module.
-    ///      `data` is abi.encode(address easAddress)
+    ///      `data` is abi.encode(address easAddress).
+    ///      Only takes effect while the account reports this module as installed, so
+    ///      a session key that can reach this module through the account can't
+    ///      (re)initialize it with an EAS of its choosing.
     function onInstall(bytes calldata data) external override {
+        if (!_isInstalledOn(msg.sender)) {
+            revert NotInstalledOnAccount(msg.sender);
+        }
         if (_easForAccount[msg.sender] != address(0)) {
             revert AlreadyInitialized(msg.sender);
         }
@@ -186,7 +191,13 @@ contract SeedProtocolExecutor is IERC7579Module {
 
     /// @inheritdoc IERC7579Module
     /// @dev Called by the smart account when uninstalling this module.
+    ///      Only takes effect once the account no longer reports this module as
+    ///      installed, so a session key can't wipe the configuration to break publishing.
     function onUninstall(bytes calldata) external override {
+        if (_isInstalledOn(msg.sender)) {
+            revert StillInstalledOnAccount(msg.sender);
+        }
+
         delete _easForAccount[msg.sender];
 
         emit ModuleUninitialized(msg.sender);
@@ -212,61 +223,13 @@ contract SeedProtocolExecutor is IERC7579Module {
     // ========================================================================
 
     /**
-     * @notice Creates a Seed attestation via the calling smart account.
+     * @notice Creates a (revocable) Seed attestation via the calling smart account.
      * @dev The caller must be the smart account that has this module installed.
-     *      This function builds the EAS.attest() calldata, then calls
-     *      account.executeFromExecutor() so the account makes the EAS call.
-     *      The account is msg.sender to EAS → the account owns the attestation.
      * @param schemaUid The schema UID for the seed attestation
-     * @param revocable Whether the attestation is revocable
      * @return seedUid The UID of the created attestation
      */
-    function createSeed(
-        bytes32 schemaUid,
-        bool revocable
-    ) public payable returns (bytes32) {
-        address account = msg.sender;
-        address eas = _getEASOrRevert(account);
-
-        // Build the EAS attestation request
-        AttestationRequestData memory seedData = AttestationRequestData({
-            recipient: address(0),
-            expirationTime: 0,
-            revocable: revocable,
-            refUID: bytes32(0),
-            data: abi.encode(schemaUid),
-            value: uint256(0)
-        });
-
-        AttestationRequest memory seedRequest = AttestationRequest({
-            schema: schemaUid,
-            data: seedData
-        });
-
-        // Encode the call to EAS.attest()
-        bytes memory easCalldata = abi.encodeWithSelector(
-            IEAS_SeedProtocol.attest.selector,
-            seedRequest
-        );
-
-        // Execute via the smart account using single-call mode
-        bytes[] memory results = IERC7579Account(account).executeFromExecutor(
-            ModeLib.encodeSimpleSingle(),
-            abi.encodePacked(eas, uint256(msg.value), easCalldata)
-        );
-
-        // Decode the returned attestation UID
-        bytes32 seedUid = abi.decode(results[0], (bytes32));
-        if (seedUid == bytes32(0)) {
-            revert AttestationFailed();
-        }
-
-        emit CreatedAttestation(CreatedAttestationResult({
-            schemaUid: schemaUid,
-            attestationUid: seedUid
-        }));
-
-        return seedUid;
+    function createSeed(bytes32 schemaUid) external returns (bytes32) {
+        return _createSeed(msg.sender, _getEASOrRevert(msg.sender), schemaUid);
     }
 
     /**
@@ -275,87 +238,38 @@ contract SeedProtocolExecutor is IERC7579Module {
      * @param versionSchemaUid The schema UID for the version attestation
      * @return versionUid The UID of the created version attestation
      */
-    function createVersion(
-        bytes32 seedUid,
-        bytes32 versionSchemaUid
-    ) public payable returns (bytes32) {
-        address account = msg.sender;
-        address eas = _getEASOrRevert(account);
-
-        AttestationRequestData memory versionData = AttestationRequestData({
-            recipient: address(0),
-            expirationTime: 0,
-            revocable: true,
-            refUID: seedUid,
-            data: abi.encode(versionSchemaUid),
-            value: uint256(0)
-        });
-
-        AttestationRequest memory versionRequest = AttestationRequest({
-            schema: versionSchemaUid,
-            data: versionData
-        });
-
-        bytes memory easCalldata = abi.encodeWithSelector(
-            IEAS_SeedProtocol.attest.selector,
-            versionRequest
-        );
-
-        bytes[] memory results = IERC7579Account(account).executeFromExecutor(
-            ModeLib.encodeSimpleSingle(),
-            abi.encodePacked(eas, uint256(msg.value), easCalldata)
-        );
-
-        bytes32 versionUid = abi.decode(results[0], (bytes32));
-        if (versionUid == bytes32(0)) {
-            revert AttestationFailed();
-        }
-
-        emit CreatedAttestation(CreatedAttestationResult({
-            schemaUid: versionSchemaUid,
-            attestationUid: versionUid
-        }));
-
-        return versionUid;
+    function createVersion(bytes32 seedUid, bytes32 versionSchemaUid) external returns (bytes32) {
+        return _createVersion(msg.sender, _getEASOrRevert(msg.sender), seedUid, versionSchemaUid);
     }
 
     /**
      * @notice Publishes a seed + version, creating either or both if they don't exist yet.
+     * @dev Only the seed/version are created; use `multiPublish` for property attestations.
+     *      `seedIsRevocable` is ignored: seeds are always revocable.
      * @param request The publish request data
      * @return seedUid The seed attestation UID (created or existing)
      * @return versionUid The version attestation UID (created or existing)
      */
-    function publish(
-        PublishRequestData memory request
-    ) public payable returns (bytes32, bytes32) {
-        bytes32 seedUid = request.seedUid;
-        bytes32 versionUid = request.versionUid;
-
-        if (seedUid == bytes32(0)) {
-            seedUid = createSeed(request.seedSchemaUid, request.seedIsRevocable);
-        }
-
-        if (seedUid != bytes32(0) && versionUid == bytes32(0)) {
-            versionUid = createVersion(seedUid, request.versionSchemaUid);
-        }
-
-        return (seedUid, versionUid);
+    function publish(PublishRequestData memory request) external returns (bytes32, bytes32) {
+        return _publish(msg.sender, _getEASOrRevert(msg.sender), request);
     }
 
     /**
      * @notice Batch publishes multiple seeds/versions and their property attestations.
-     * @dev Preserves the same cross-reference logic from the original extension:
-     *      - Each request's listOfAttestations gets its refUID updated to the new versionUid
-     *      - propertiesToUpdate allows one request's newly created seedUid to be
-     *        injected into another request's attestation data
+     * @dev Same cross-reference rules as the Seed extensions (SeedPublishLib):
+     *      - Each request's listOfAttestations gets its refUID updated to the new
+     *        versionUid and is forced revocable
+     *      - propertiesToUpdate injects a request's new seedUid into the current or
+     *        a later request's attestation data
      * @param requests Array of publish request data
-     * @return result Array of bytes32 (reserved for future use)
+     * @return result The seed UID of each request
      */
     function multiPublish(
         PublishRequestData[] memory requests
-    ) public payable returns (bytes32[] memory) {
+    ) external payable returns (bytes32[] memory) {
         address account = msg.sender;
         address eas = _getEASOrRevert(account);
+        uint256 value = msg.value;
 
         bytes32[] memory result = new bytes32[](requests.length);
 
@@ -363,43 +277,36 @@ contract SeedProtocolExecutor is IERC7579Module {
             PublishRequestData memory requestToPublish = requests[i];
 
             // Create seed and/or version as needed
-            (bytes32 newSeedUid, bytes32 newVersionUid) = publish(requestToPublish);
-
-            // Update the current request's attestations with newVersionUid as refUID
-            for (uint256 j = 0; j < requestToPublish.listOfAttestations.length; j++) {
-                MultiAttestationRequest memory attestationRequest = requestToPublish.listOfAttestations[j];
-                for (uint256 k = 0; k < attestationRequest.data.length; k++) {
-                    attestationRequest.data[k].refUID = newVersionUid;
-                }
-            }
+            (bytes32 newSeedUid, bytes32 newVersionUid) = _publish(account, eas, requestToPublish);
 
             // Update other requests that reference this request's new seedUid
             PropertyToUpdateWithSeed[] memory propertiesToUpdate = requestToPublish.propertiesToUpdate;
             for (uint256 l = 0; l < propertiesToUpdate.length; l++) {
-                PropertyToUpdateWithSeed memory propertyToUpdate = propertiesToUpdate[l];
-                uint256 idx = propertyToUpdate.publishIndex;
-                require(idx < requests.length, "Invalid publish index");
-                for (uint256 n = 0; n < requests[idx].listOfAttestations.length; n++) {
-                    if (requests[idx].listOfAttestations[n].schema == propertyToUpdate.propertySchemaUid) {
-                        requests[idx].listOfAttestations[n].data[0].data = abi.encode(newSeedUid);
-                    }
-                }
+                uint256 idx = propertiesToUpdate[l].publishIndex;
+                SeedPublishLib.checkPublishIndex(idx, requests.length);
+                SeedPublishLib.setSeedReference(
+                    requests[idx].listOfAttestations,
+                    i,
+                    idx,
+                    propertiesToUpdate[l].propertySchemaUid,
+                    newSeedUid
+                );
             }
 
             // Execute multiAttest via the smart account
             if (requestToPublish.listOfAttestations.length > 0) {
-                bytes memory easCalldata = abi.encodeWithSelector(
-                    IEAS_SeedProtocol.multiAttest.selector,
-                    requestToPublish.listOfAttestations
-                );
+                SeedPublishLib.prepareProperties(requestToPublish.listOfAttestations, newVersionUid);
 
-                bytes[] memory results = IERC7579Account(account).executeFromExecutor(
-                    ModeLib.encodeSimpleSingle(),
-                    abi.encodePacked(eas, uint256(msg.value), easCalldata)
+                bytes[] memory results = _executeOnAccount(
+                    account,
+                    eas,
+                    value,
+                    abi.encodeCall(IEAS.multiAttest, (requestToPublish.listOfAttestations))
                 );
+                value = 0;
 
-                // Verify the call succeeded (executeFromExecutor reverts on failure
-                // with EXECTYPE_DEFAULT, but we check for empty return as extra safety)
+                // executeFromExecutor reverts on failure with EXECTYPE_DEFAULT; an empty
+                // result means a non-conforming account
                 if (results.length == 0) {
                     revert MultiAttestFailed();
                 }
@@ -410,12 +317,97 @@ contract SeedProtocolExecutor is IERC7579Module {
             result[i] = newSeedUid;
         }
 
+        if (value != 0) {
+            revert UnusedValue(value);
+        }
+
         return result;
     }
 
     // ========================================================================
     // Internal Helpers
     // ========================================================================
+
+    function _publish(
+        address account,
+        address eas,
+        PublishRequestData memory request
+    ) internal returns (bytes32 seedUid, bytes32 versionUid) {
+        seedUid = request.seedUid;
+        versionUid = request.versionUid;
+
+        if (seedUid == bytes32(0)) {
+            seedUid = _createSeed(account, eas, request.seedSchemaUid);
+        }
+
+        if (versionUid == bytes32(0)) {
+            versionUid = _createVersion(account, eas, seedUid, request.versionSchemaUid);
+        }
+    }
+
+    function _createSeed(address account, address eas, bytes32 schemaUid) internal returns (bytes32) {
+        return _attest(account, eas, schemaUid, bytes32(0), abi.encode(schemaUid));
+    }
+
+    function _createVersion(
+        address account,
+        address eas,
+        bytes32 seedUid,
+        bytes32 versionSchemaUid
+    ) internal returns (bytes32) {
+        return _attest(account, eas, versionSchemaUid, seedUid, abi.encode(versionSchemaUid));
+    }
+
+    /// @dev Creates a revocable attestation as `account` and returns its UID.
+    function _attest(
+        address account,
+        address eas,
+        bytes32 schemaUid,
+        bytes32 refUid,
+        bytes memory data
+    ) internal returns (bytes32 uid) {
+        AttestationRequest memory request = AttestationRequest({
+            schema: schemaUid,
+            data: AttestationRequestData({
+                recipient: address(0),
+                expirationTime: 0,
+                revocable: true,
+                refUID: refUid,
+                data: data,
+                value: 0
+            })
+        });
+
+        bytes[] memory results = _executeOnAccount(account, eas, 0, abi.encodeCall(IEAS.attest, (request)));
+
+        uid = abi.decode(results[0], (bytes32));
+        if (uid == bytes32(0)) {
+            revert AttestationFailed();
+        }
+
+        emit CreatedAttestation(CreatedAttestationResult({
+            schemaUid: schemaUid,
+            attestationUid: uid
+        }));
+    }
+
+    /// @dev Has `account` call `eas` with `value`, passing that value back to the account
+    ///      with the call so the account never pays for it from its own balance.
+    function _executeOnAccount(
+        address account,
+        address eas,
+        uint256 value,
+        bytes memory easCalldata
+    ) internal returns (bytes[] memory) {
+        return IERC7579Account(account).executeFromExecutor{value: value}(
+            ModeLib.encodeSimpleSingle(),
+            abi.encodePacked(eas, value, easCalldata)
+        );
+    }
+
+    function _isInstalledOn(address account) internal view returns (bool) {
+        return IERC7579Account(account).isModuleInstalled(MODULE_TYPE_EXECUTOR, address(this), "");
+    }
 
     /// @dev Returns the EAS address for the account, or reverts if not initialized.
     function _getEASOrRevert(address account) internal view returns (address eas) {

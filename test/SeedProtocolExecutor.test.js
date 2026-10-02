@@ -4,6 +4,7 @@ const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helper
 const path = require("path");
 const fs = require("fs");
 const { executorEASFixture, MODULE_TYPE_EXECUTOR } = require("./fixtures/executorEASFixture");
+const { expectCustomError } = require("./fixtures/managedAccountFixture");
 
 /**
  * End-to-end tests for SeedProtocolExecutor (ERC-7579 Executor Module)
@@ -89,8 +90,8 @@ describe("SeedProtocolExecutor", function () {
   }
 
   /** Run createSeed and return the attestation UID from the CreatedAttestation event. */
-  async function createSeedAndGetUid(revocable) {
-    const tx = await callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID, revocable]);
+  async function createSeedAndGetUid() {
+    const tx = await callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID]);
     const receipt = await tx.wait();
     const uids = await getCreatedAttestationUids(receipt);
     return uids[0];
@@ -192,7 +193,7 @@ describe("SeedProtocolExecutor", function () {
         "0x"
       );
       await expect(
-        callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID, true])
+        callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID])
       ).to.be.reverted;
     });
 
@@ -212,14 +213,14 @@ describe("SeedProtocolExecutor", function () {
 
   describe("createSeed", function () {
     it("should create an attestation and return a non-zero UID", async function () {
-      const seedUid = await createSeedAndGetUid(true);
+      const seedUid = await createSeedAndGetUid();
       expect(seedUid).to.not.equal(ethers.ZeroHash);
       const att = await eas.getAttestation(seedUid);
       expect(att.uid).to.equal(seedUid);
     });
 
     it("should make the ACCOUNT the attester, not the executor module", async function () {
-      const uid = await createSeedAndGetUid(true);
+      const uid = await createSeedAndGetUid();
       const attestation = await eas.getAttestation(uid);
       const accountAddr = await account.getAddress();
       const executorAddr = await executor.getAddress();
@@ -228,7 +229,7 @@ describe("SeedProtocolExecutor", function () {
     });
 
     it("should store the correct schema UID in the attestation", async function () {
-      const uid = await createSeedAndGetUid(true);
+      const uid = await createSeedAndGetUid();
       const attestation = await eas.getAttestation(uid);
       expect(attestation.schema).to.equal(SEED_SCHEMA_UID);
     });
@@ -236,7 +237,7 @@ describe("SeedProtocolExecutor", function () {
     it("should emit CreatedAttestation event", async function () {
       const calldata = executor.interface.encodeFunctionData(
         "createSeed",
-        [SEED_SCHEMA_UID, true]
+        [SEED_SCHEMA_UID]
       );
       const tx = await account.execute(
         await executor.getAddress(),
@@ -251,20 +252,10 @@ describe("SeedProtocolExecutor", function () {
       expect(createdAttestationEvents.length).to.be.greaterThan(0);
     });
 
-    it("should set revocable correctly", async function () {
-      const tx1 = await callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID, true]);
-      const receipt1 = await tx1.wait();
-      const uids1 = await getCreatedAttestationUids(receipt1);
-      const uid1 = uids1[0];
-      const att1 = await eas.getAttestation(uid1);
-      expect(att1.revocable).to.be.true;
-
-      const tx2 = await callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID, false]);
-      const receipt2 = await tx2.wait();
-      const uids2 = await getCreatedAttestationUids(receipt2);
-      const uid2 = uids2[0];
-      const att2 = await eas.getAttestation(uid2);
-      expect(att2.revocable).to.be.false;
+    it("should always create revocable seeds", async function () {
+      const uid = await createSeedAndGetUid();
+      const att = await eas.getAttestation(uid);
+      expect(att.revocable).to.be.true;
     });
   });
 
@@ -272,7 +263,7 @@ describe("SeedProtocolExecutor", function () {
     let seedUid;
 
     beforeEach(async function () {
-      seedUid = await createSeedAndGetUid(true);
+      seedUid = await createSeedAndGetUid();
     });
 
     it("should create a version attestation referencing the seed", async function () {
@@ -318,7 +309,7 @@ describe("SeedProtocolExecutor", function () {
     });
 
     it("should skip seed creation when seedUid is provided", async function () {
-      const existingSeedUid = await createSeedAndGetUid(true);
+      const existingSeedUid = await createSeedAndGetUid();
       const request = {
         localId: "test-local-2",
         seedUid: existingSeedUid,
@@ -336,7 +327,7 @@ describe("SeedProtocolExecutor", function () {
     });
 
     it("should skip both when both UIDs are provided", async function () {
-      const existingSeedUid = await createSeedAndGetUid(true);
+      const existingSeedUid = await createSeedAndGetUid();
       const existingVersionUid = await createVersionAndGetUid(existingSeedUid);
       const request = {
         localId: "test-local-3",
@@ -484,9 +475,13 @@ describe("SeedProtocolExecutor", function () {
           ],
         },
       ];
-      await expect(callExecutorFromAccount("multiPublish", [requests])).to.be.revertedWith(
-        "Invalid publish index"
+      const [targetIndex, length] = await expectCustomError(
+        callExecutorFromAccount("multiPublish", [requests]),
+        executor.interface,
+        "PublishIndexOutOfBounds"
       );
+      expect(targetIndex).to.equal(99n);
+      expect(length).to.equal(1n);
     });
 
     it("should make the account the attester for all multiAttest attestations", async function () {
@@ -526,7 +521,7 @@ describe("SeedProtocolExecutor", function () {
   describe("Access Control", function () {
     it("should revert if an EOA calls executor functions directly", async function () {
       await expect(
-        executor.connect(owner).createSeed(SEED_SCHEMA_UID, true)
+        executor.connect(owner).createSeed(SEED_SCHEMA_UID)
       ).to.be.reverted;
     });
 
@@ -550,7 +545,7 @@ describe("SeedProtocolExecutor", function () {
     it("should revert if a non-owner tries to execute through the account", async function () {
       const calldata = executor.interface.encodeFunctionData(
         "createSeed",
-        [SEED_SCHEMA_UID, true]
+        [SEED_SCHEMA_UID]
       );
       await expect(
         account.connect(otherUser).execute(
@@ -616,6 +611,130 @@ describe("SeedProtocolExecutor", function () {
       await account.uninstallModule(MODULE_TYPE_EXECUTOR, await executor.getAddress(), "0x");
       expect(await executor.isInitialized(await account2.getAddress())).to.be.true;
       expect(await executor.isInitialized(await account.getAddress())).to.be.false;
+    });
+  });
+
+  /** One request creating a seed + version and a single "string value" property. */
+  function requestWithProperty({ revocable = true } = {}) {
+    return {
+      localId: "with-property",
+      seedUid: ethers.ZeroHash,
+      versionUid: ethers.ZeroHash,
+      seedSchemaUid: SEED_SCHEMA_UID,
+      versionSchemaUid: VERSION_SCHEMA_UID,
+      seedIsRevocable: revocable,
+      listOfAttestations: [
+        {
+          schema: PROPERTY_SCHEMA_UID,
+          data: [
+            {
+              recipient: ethers.ZeroAddress,
+              expirationTime: 0n,
+              revocable,
+              refUID: ethers.ZeroHash,
+              data: ethers.AbiCoder.defaultAbiCoder().encode(["string"], ["value"]),
+              value: 0n,
+            },
+          ],
+        },
+      ],
+      propertiesToUpdate: [],
+    };
+  }
+
+  describe("Value handling (F6)", function () {
+    it("forwards msg.value to EAS once and keeps none of it in the module", async function () {
+      const executorAddr = await executor.getAddress();
+      const accountAddr = await account.getAddress();
+      const value = ethers.parseEther("1");
+      const accountBefore = await ethers.provider.getBalance(accountAddr);
+
+      await (await callExecutorFromAccount("multiPublish", [[requestWithProperty(), requestWithProperty()]], value)).wait();
+
+      // EAS refunds unused value to its caller, the account; nothing may stay in the module.
+      expect(await ethers.provider.getBalance(executorAddr)).to.equal(0n);
+      expect(await ethers.provider.getBalance(accountAddr)).to.equal(accountBefore + value);
+    });
+
+    it("rejects value when no attestation batch would consume it", async function () {
+      const request = { ...requestWithProperty(), listOfAttestations: [] };
+      const value = ethers.parseEther("1");
+      const [unused] = await expectCustomError(
+        callExecutorFromAccount("multiPublish", [[request]], value),
+        executor.interface,
+        "UnusedValue",
+      );
+      expect(unused).to.equal(value);
+    });
+
+    it("does not accept value on createSeed, createVersion or publish", async function () {
+      await expect(callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID], 1n)).to.be.reverted;
+      await expect(callExecutorFromAccount("publish", [requestWithProperty()], 1n)).to.be.reverted;
+    });
+  });
+
+  describe("Lifecycle guards", function () {
+    it("ignores onUninstall sent through the account while the module is still installed", async function () {
+      // e.g. a session key allowed to target the executor trying to break publishing
+      const accountAddr = await account.getAddress();
+      const [who] = await expectCustomError(
+        callExecutorFromAccount("onUninstall", ["0x"]),
+        executor.interface,
+        "StillInstalledOnAccount",
+      );
+      expect(who).to.equal(accountAddr);
+      expect(await executor.isInitialized(accountAddr)).to.be.true;
+      expect(await executor.getEAS(accountAddr)).to.equal(await eas.getAddress());
+    });
+
+    it("ignores onInstall sent through an account that hasn't installed the module", async function () {
+      const Account = await ethers.getContractFactory("MockERC7579Account");
+      const freshAccount = await Account.deploy(owner.address);
+      await freshAccount.waitForDeployment();
+      const initData = ethers.AbiCoder.defaultAbiCoder().encode(["address"], [otherUser.address]);
+      const calldata = executor.interface.encodeFunctionData("onInstall", [initData]);
+
+      await expectCustomError(
+        freshAccount.execute(await executor.getAddress(), 0n, calldata),
+        executor.interface,
+        "NotInstalledOnAccount",
+      );
+      expect(await executor.isInitialized(await freshAccount.getAddress())).to.be.false;
+    });
+
+    it("rejects onInstall/onUninstall from an EOA", async function () {
+      const initData = ethers.AbiCoder.defaultAbiCoder().encode(["address"], [await eas.getAddress()]);
+      await expect(executor.connect(otherUser).onInstall(initData)).to.be.reverted;
+      await expect(executor.connect(otherUser).onUninstall("0x")).to.be.reverted;
+    });
+  });
+
+  describe("Revocability (D7a)", function () {
+    it("forces seed and property attestations revocable even when the request asks otherwise", async function () {
+      const tx = await callExecutorFromAccount("multiPublish", [[requestWithProperty({ revocable: false })]]);
+      const uids = await getEASAttestedUids(await tx.wait());
+      expect(uids.length).to.equal(3);
+      for (const uid of uids) {
+        expect((await eas.getAttestation(uid)).revocable).to.be.true;
+      }
+    });
+  });
+
+  describe("Cross-references (F9)", function () {
+    it("rejects referencing a request that was already attested", async function () {
+      const target = requestWithProperty();
+      const referrer = {
+        ...requestWithProperty(),
+        localId: "referrer",
+        propertiesToUpdate: [{ publishIndex: 0, propertySchemaUid: PROPERTY_SCHEMA_UID }],
+      };
+      const [requestIndex, targetIndex] = await expectCustomError(
+        callExecutorFromAccount("multiPublish", [[target, referrer]]),
+        executor.interface,
+        "PublishTargetAlreadyAttested",
+      );
+      expect(requestIndex).to.equal(1n);
+      expect(targetIndex).to.equal(0n);
     });
   });
 });
