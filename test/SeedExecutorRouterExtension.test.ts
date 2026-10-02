@@ -5,22 +5,28 @@
  * Flow under test: signer → account.execute(executor, multiPublish) → executor →
  * account.executeFromExecutor → EAS, with the account as attester.
  */
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { loadFixture, impersonateAccount, setBalance } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {
-  managedAccountExecutorFixture,
-  grantSessionKey,
-  revokeSessionKey,
-  sendUserOp,
-  expectCustomError,
-  expectUserOpRejected,
+import { expect } from "chai";
+import { AbiCoder, type ContractTransactionReceipt, Interface, ZeroAddress, ZeroHash, parseEther, solidityPacked } from "ethers";
+import { network } from "hardhat";
+import {
+  type ManagedAccountExecutorSetup,
   attestedEvents,
   buildPublishRequests,
-} = require("./fixtures/managedAccountFixture");
+  createManagedAccountFixtures,
+  expectCustomError,
+  expectUserOpRejected,
+} from "./fixtures/managedAccountFixture.js";
+
+const connection = await network.create();
+const { ethers, networkHelpers } = connection;
+const { loadFixture, impersonateAccount, setBalance } = networkHelpers;
+const { managedAccountExecutorFixture, grantSessionKey, revokeSessionKey, sendUserOp } =
+  createManagedAccountFixtures(connection);
+
+type Setup = ManagedAccountExecutorSetup;
 
 const MODULE_TYPE_EXECUTOR = 2n;
-const SINGLE_MODE = ethers.ZeroHash;
+const SINGLE_MODE = ZeroHash;
 const BATCH_MODE = "0x01" + "00".repeat(31);
 
 async function installedExecutorFixture() {
@@ -29,30 +35,33 @@ async function installedExecutorFixture() {
   return setup;
 }
 
-function executeCallData(setup, target, value, data) {
+function executeCallData(setup: Setup, target: string, value: bigint, data: string) {
   return setup.account.interface.encodeFunctionData("execute", [target, value, data]);
 }
 
-function executorMultiPublishCallData(setup, options) {
-  return setup.executor.interface.encodeFunctionData("multiPublish", [buildPublishRequests(setup, options)]);
+function executorMultiPublishCallData(setup: Setup, options?: Parameters<typeof buildPublishRequests>[1]) {
+  return (setup.executor.interface as Interface).encodeFunctionData("multiPublish", [buildPublishRequests(setup, options)]);
 }
 
 /** account.execute(executor, value, multiPublish(...)) from the account admin's EOA. */
-async function adminPublishViaExecutor(setup, { value = 0n, ...options } = {}) {
+async function adminPublishViaExecutor(
+  setup: Setup,
+  { value = 0n, ...options }: { value?: bigint } & Parameters<typeof buildPublishRequests>[1] = {},
+) {
   const executorAddress = await setup.executor.getAddress();
   return setup.account
     .connect(setup.accountAdmin)
     .execute(executorAddress, value, executorMultiPublishCallData(setup, options));
 }
 
-async function grantExecutorSessionKey(setup) {
+async function grantExecutorSessionKey(setup: Setup) {
   await grantSessionKey(setup.account, setup.accountAdmin, setup.delegate.address, {
     approvedTargets: [await setup.executor.getAddress()],
   });
 }
 
 /** A UserOp from the delegate: account.execute(executor, 0, data). */
-async function delegateCallsExecutor(setup, data) {
+async function delegateCallsExecutor(setup: Setup, data: string) {
   return sendUserOp({
     ...setup,
     signer: setup.delegate,
@@ -60,35 +69,35 @@ async function delegateCallsExecutor(setup, data) {
   });
 }
 
-function seedAttestCallData(setup) {
+function seedAttestCallData(setup: Setup) {
   return setup.eas.interface.encodeFunctionData("attest", [
     {
       schema: setup.seedSchemaUid,
       data: {
-        recipient: ethers.ZeroAddress,
+        recipient: ZeroAddress,
         expirationTime: 0n,
         revocable: true,
-        refUID: ethers.ZeroHash,
-        data: ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [setup.seedSchemaUid]),
+        refUID: ZeroHash,
+        data: AbiCoder.defaultAbiCoder().encode(["bytes32"], [setup.seedSchemaUid]),
         value: 0n,
       },
     },
   ]);
 }
 
-function packExecution(target, value, callData) {
-  return ethers.solidityPacked(["address", "uint256", "bytes"], [target, value, callData]);
+function packExecution(target: string, value: bigint, callData: string) {
+  return solidityPacked(["address", "uint256", "bytes"], [target, value, callData]);
 }
 
 /** Signer for the executor contract's address, to probe executeFromExecutor directly. */
-async function executorSigner(setup) {
+async function executorSigner(setup: Setup) {
   const address = await setup.executor.getAddress();
   await impersonateAccount(address);
-  await setBalance(address, ethers.parseEther("10"));
+  await setBalance(address, parseEther("10"));
   return ethers.getSigner(address);
 }
 
-function expectAttestedByAccount(setup, receipt, count) {
+function expectAttestedByAccount(setup: Setup, receipt: ContractTransactionReceipt | null, count: number) {
   const attested = attestedEvents(setup.eas, receipt);
   expect(attested).to.have.length(count);
   for (const { attester } of attested) expect(attester).to.equal(setup.accountAddress);
@@ -138,7 +147,7 @@ describe("SeedExecutorRouterExtension", function () {
       await grantSessionKey(setup.account, setup.accountAdmin, setup.delegate.address, {
         approvedTargets: [setup.accountAddress],
       });
-      const viaSelf = (fn) =>
+      const viaSelf = (fn: string) =>
         sendUserOp({
           ...setup,
           signer: setup.delegate,
@@ -216,12 +225,12 @@ describe("SeedExecutorRouterExtension", function () {
     it("stops working once the executor is uninstalled", async function () {
       const setup = await loadFixture(installedExecutorFixture);
       await (await setup.account.connect(setup.accountAdmin).uninstallSeedExecutor()).wait();
-      await expectCustomError(adminPublishViaExecutor(setup), setup.executor.interface, "NotInitialized");
+      await expectCustomError(adminPublishViaExecutor(setup), setup.executor.interface as Interface, "NotInitialized");
     });
 
     it("round-trips value without the account or executor losing any", async function () {
       const setup = await loadFixture(installedExecutorFixture);
-      const value = ethers.parseEther("1");
+      const value = parseEther("1");
       const executorAddress = await setup.executor.getAddress();
       const accountBefore = await ethers.provider.getBalance(setup.accountAddress);
 
@@ -250,7 +259,7 @@ describe("SeedExecutorRouterExtension", function () {
       const { success } = await delegateCallsExecutor(
         setup,
         setup.executor.interface.encodeFunctionData("onInstall", [
-          ethers.AbiCoder.defaultAbiCoder().encode(["address"], [setup.delegate.address]),
+          AbiCoder.defaultAbiCoder().encode(["address"], [setup.delegate.address]),
         ]),
       );
       expect(success).to.equal(false);
@@ -320,7 +329,7 @@ describe("SeedExecutorRouterExtension", function () {
       const setup = await loadFixture(installedExecutorFixture);
       const signer = await executorSigner(setup);
       const revoke = setup.eas.interface.encodeFunctionData("revoke", [
-        { schema: setup.seedSchemaUid, data: { uid: ethers.ZeroHash, value: 0n } },
+        { schema: setup.seedSchemaUid, data: { uid: ZeroHash, value: 0n } },
       ]);
       const [selector] = await expectCustomError(
         setup.account.connect(signer).executeFromExecutor(SINGLE_MODE, packExecution(setup.easAddress, 0n, revoke)),
@@ -343,7 +352,7 @@ describe("SeedExecutorRouterExtension", function () {
     it("rejects value the executor didn't send, so the account never pays for it", async function () {
       const setup = await loadFixture(installedExecutorFixture);
       const signer = await executorSigner(setup);
-      const encoded = ethers.parseEther("1");
+      const encoded = parseEther("1");
       const [encodedValue, sentValue] = await expectCustomError(
         setup.account
           .connect(signer)
