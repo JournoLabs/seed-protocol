@@ -8,59 +8,15 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect } from "chai";
-import { Contract, Interface, ZeroAddress } from "ethers";
-import hre, { network } from "hardhat";
-import { SEED_EXTENSION_FUNCTIONS, buildExtension, mergeInterfaces } from "../scripts/lib/extensions.js";
+import { Contract, ZeroAddress } from "ethers";
+import { network } from "hardhat";
 import type { RoutingSnapshot } from "../scripts/lib/routing.js";
-import { buildSeedExtensions } from "../scripts/lib/seedDeployment.js";
 import { replaceExtension } from "../scripts/replace_extension.js";
-import { createManagedAccountFixtures } from "./fixtures/managedAccountFixture.js";
+import { SET_EAS, createRolloutFixtures } from "./fixtures/rolloutFixture.js";
 
 const connection = await network.create();
-const { ethers, networkHelpers } = connection;
-const { managedAccountFixture } = createManagedAccountFixtures(connection);
-
-const LEGACY_SET_EAS = new Interface(["function setEas(address)"]);
-const SET_EAS = LEGACY_SET_EAS.getFunction("setEas")!.selector;
-
-/**
- * The managed-account stack, re-registered the way OP Sepolia had it before the
- * fix: "SeedProtocolExtension" routing multiPublish, getEas and setEas to an old
- * implementation. Plus a fresh deployment of the contracts the rollout registers.
- */
-async function oldRegistryFixture() {
-  const setup = await managedAccountFixture();
-  const { factory, factoryAdmin, easAddress } = setup;
-
-  // Stand-in for the old implementation; the Router doesn't check it has setEas.
-  const oldImpl = await ethers.deployContract("SeedProtocolExtension", [easAddress]);
-  const oldAbi = mergeInterfaces(oldImpl.interface, LEGACY_SET_EAS);
-  await (
-    await factory
-      .connect(factoryAdmin)
-      .replaceExtension(
-        buildExtension("SeedProtocolExtension", await oldImpl.getAddress(), oldAbi, [...SEED_EXTENSION_FUNCTIONS, "setEas"]),
-      )
-  ).wait();
-
-  const seedProtocolExtension = await ethers.deployContract("SeedProtocolExtension", [easAddress]);
-  const seedProtocolExtensionV2 = await ethers.deployContract("SeedProtocolExtensionV2", [easAddress]);
-  const seedProtocolExecutor = await ethers.deployContract("SeedProtocolExecutor");
-  const seedExecutorRouterExtension = await ethers.deployContract("SeedExecutorRouterExtension", [
-    easAddress,
-    await seedProtocolExecutor.getAddress(),
-  ]);
-  const extensions = await buildSeedExtensions(hre, {
-    seedProtocolExtension: await seedProtocolExtension.getAddress(),
-    seedProtocolExtensionV2: await seedProtocolExtensionV2.getAddress(),
-    seedProtocolExecutor: await seedProtocolExecutor.getAddress(),
-    seedExecutorRouterExtension: await seedExecutorRouterExtension.getAddress(),
-  });
-
-  // The script takes a plain ethers Contract, not the TypeChain type.
-  const plainFactory = new Contract(factory.target, factory.interface, ethers.provider);
-  return { ...setup, factory: plainFactory, oldImpl: await oldImpl.getAddress(), extensions };
-}
+const { networkHelpers } = connection;
+const { oldRegistryFixture } = createRolloutFixtures(connection);
 
 async function newSnapshotFile() {
   return path.join(await mkdtemp(path.join(tmpdir(), "seed-routing-")), "routing-before.json");

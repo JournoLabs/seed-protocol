@@ -25,9 +25,16 @@ const replaceExtension = task('seed:replace-extension', "Point the ManagedAccoun
   .setAction(() => import('./scripts/replace_extension.js'))
   .build()
 
+const verifyLive = task('seed:verify-live', 'Static checks of a live account against a SeedProtocol deployment')
+  .addOption({ name: 'account', description: 'A ManagedAccount on this network (input I3)', defaultValue: '' })
+  .addOption({ name: 'parameters', description: 'Parameters file (default: ignition/parameters/<network>.json)', defaultValue: '' })
+  .addOption({ name: 'deploymentId', description: 'Ignition deployment id (default: chain-<chainId>)', defaultValue: '' })
+  .setAction(() => import('./scripts/verify_live_access_control.js'))
+  .build()
+
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
-  tasks: [extensionPayload, replaceExtension],
+  tasks: [extensionPayload, replaceExtension, verifyLive],
   paths: {
     sources: './contracts',
   },
