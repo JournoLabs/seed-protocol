@@ -3,19 +3,25 @@
  * written into a property attestation of another request in the same batch.
  * See docs/security/extension-access-control-plan.md (F9).
  */
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {
-  managedAccountFixture,
-  managedAccountV2Fixture,
-  expectCustomError,
+import { expect } from "chai";
+import { AbiCoder, type ContractTransactionReceipt, ZeroAddress, ZeroHash } from "ethers";
+import { network } from "hardhat";
+import {
+  type ManagedAccountSetup,
   attestedEvents,
-} = require("./fixtures/managedAccountFixture");
+  createManagedAccountFixtures,
+  expectCustomError,
+} from "./fixtures/managedAccountFixture.js";
 
-const coder = ethers.AbiCoder.defaultAbiCoder();
+const connection = await network.create();
+const { loadFixture } = connection.networkHelpers;
+const { managedAccountFixture, managedAccountV2Fixture } = createManagedAccountFixtures(connection);
 
-const VARIANTS = [
+const coder = AbiCoder.defaultAbiCoder();
+
+type Reference = (targetIndex: number, propertySchemaUid: string) => Record<string, unknown>;
+
+const VARIANTS: { label: string; fixture: () => Promise<ManagedAccountSetup>; reference: Reference }[] = [
   {
     label: "SeedProtocolExtension (legacy)",
     fixture: managedAccountFixture,
@@ -28,32 +34,39 @@ const VARIANTS = [
   },
 ];
 
+interface BatchOptions {
+  emptyDataAt?: readonly number[];
+  refSchema?: string;
+  duplicateAttestationAt?: readonly number[];
+  twoEntriesAt?: readonly number[];
+}
+
 /**
  * `count` requests, each creating a seed + version and one `bytes32 ref` property.
  * `refs` is a list of `{ from, to }`: request `from`'s new seed UID goes into request `to`'s ref property.
  */
 function buildBatch(
-  setup,
-  reference,
-  count,
-  refs,
-  { emptyDataAt = [], refSchema, duplicateAttestationAt = [], twoEntriesAt = [] } = {},
+  setup: ManagedAccountSetup,
+  reference: Reference,
+  count: number,
+  refs: { from: number; to: number }[],
+  { emptyDataAt = [], refSchema, duplicateAttestationAt = [], twoEntriesAt = [] }: BatchOptions = {},
 ) {
   const schema = setup.propertySchemaUid2; // "bytes32 ref"
   const entry = () => ({
-    recipient: ethers.ZeroAddress,
+    recipient: ZeroAddress,
     expirationTime: 0n,
     revocable: true,
-    refUID: ethers.ZeroHash,
-    data: coder.encode(["bytes32"], [ethers.ZeroHash]),
+    refUID: ZeroHash,
+    data: coder.encode(["bytes32"], [ZeroHash]),
     value: 0n,
   });
-  const dataFor = (i) => (emptyDataAt.includes(i) ? [] : twoEntriesAt.includes(i) ? [entry(), entry()] : [entry()]);
+  const dataFor = (i: number) => (emptyDataAt.includes(i) ? [] : twoEntriesAt.includes(i) ? [entry(), entry()] : [entry()]);
   return Array.from({ length: count }, (_, i) => ({
     localId: `request-${i}`,
-    seedUid: ethers.ZeroHash,
+    seedUid: ZeroHash,
     seedSchemaUid: setup.seedSchemaUid,
-    versionUid: ethers.ZeroHash,
+    versionUid: ZeroHash,
     versionSchemaUid: setup.versionSchemaUid,
     seedIsRevocable: true,
     listOfAttestations: [
@@ -65,22 +78,22 @@ function buildBatch(
 }
 
 /** Seed, version and ref-property UIDs per request, in batch order. */
-function uidsByRequest(setup, receipt) {
+function uidsByRequest(setup: ManagedAccountSetup, receipt: ContractTransactionReceipt | null) {
   const attested = attestedEvents(setup.eas, receipt);
-  const pick = (schema) => attested.filter((a) => a.schema === schema).map((a) => a.uid);
+  const pick = (schema: string) => attested.filter((a) => a.schema === schema).map((a) => a.uid);
   const seeds = pick(setup.seedSchemaUid);
   const versions = pick(setup.versionSchemaUid);
   const properties = pick(setup.propertySchemaUid2);
   return seeds.map((seed, i) => ({ seed, version: versions[i], property: properties[i] }));
 }
 
-async function refValue(setup, uid) {
+async function refValue(setup: ManagedAccountSetup, uid: string) {
   return coder.decode(["bytes32"], (await setup.eas.getAttestation(uid)).data)[0];
 }
 
 for (const { label, fixture, reference } of VARIANTS) {
   describe(`${label} cross-references`, function () {
-    async function publish(setup, batch) {
+    async function publish(setup: ManagedAccountSetup, batch: ReturnType<typeof buildBatch>) {
       return (await setup.account.connect(setup.accountAdmin).multiPublish(batch)).wait();
     }
 
@@ -90,7 +103,7 @@ for (const { label, fixture, reference } of VARIANTS) {
       const [first, second] = uidsByRequest(setup, receipt);
 
       expect(await refValue(setup, second.property)).to.equal(first.seed);
-      expect(await refValue(setup, first.property)).to.equal(ethers.ZeroHash);
+      expect(await refValue(setup, first.property)).to.equal(ZeroHash);
     });
 
     it("allows a request to reference itself", async function () {
@@ -147,7 +160,7 @@ for (const { label, fixture, reference } of VARIANTS) {
     for (const [shape, options] of [
       ["two attestations", { duplicateAttestationAt: [1] }],
       ["two data entries", { twoEntriesAt: [1] }],
-    ]) {
+    ] as const) {
       it(`rejects a reference that matches ${shape} with the schema rather than overwrite client data`, async function () {
         const setup = await loadFixture(fixture);
         const [targetIndex, schema] = await expectCustomError(
