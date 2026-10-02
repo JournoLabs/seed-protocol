@@ -41,6 +41,7 @@ CI (`.github/workflows/test.yml`) runs build, type-check and tests on pushes to 
 | `ignition/parameters/` | Per-network module parameters, plus `SeedRollout.factory` for the rollout tasks |
 | `ignition/deployments/` | Ignition's deployment records: the one place deployed addresses live |
 | `scripts/` | Rollout tasks and the rehearsal driver (see [Deployment](#deployment)); shared code in `scripts/lib/` |
+| `schemas/base-schemas.json` | The EAS schemas the protocol itself relies on, with their UIDs (for the SDK too) |
 | `docs/` | Plans and design notes |
 
 ## Build notes
@@ -120,6 +121,7 @@ All take `--network`. The rollout tasks read `ignition/parameters/<network>.json
 
 | Task | What it does | Writes? |
 |------|--------------|---------|
+| `seed:ensure-schemas` | Registers the protocol's base EAS schemas (`schemas/base-schemas.json`) where missing. `--check-only` | yes |
 | `seed:predict-addresses` | Where the create2 deploy will put each contract, and whether CreateX would succeed there | no |
 | `seed:extension-payload` | Prints the Router `Extension` structs for a deployment | no |
 | `seed:replace-extension` | Snapshots the factory's routing to `routing-before.json`, then replaces the Seed extension and adds the executor router in one `multicall`, and reads it all back. If the signer lacks `EXTENSION_ROLE`, prints the call to submit by hand. `--dry-run`, `--check-only` | yes |

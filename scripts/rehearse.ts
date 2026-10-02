@@ -104,6 +104,7 @@ async function rehearseLocal() {
     hardhat("seed:replace-extension", "--network", "localhost", "--dry-run");
     hardhat("seed:replace-extension", "--network", "localhost");
     hardhat("seed:replace-extension", "--network", "localhost", "--check-only");
+    hardhat("seed:ensure-schemas", "--network", "localhost");
     hardhat("seed:verify-live", "--network", "localhost", "--account", account);
     hardhat("seed:publish-smoke", "--network", "localhost", "--account", account, "--impersonate-admin", accountAdmin);
     console.log("\nLocal rehearsal passed.");
@@ -148,6 +149,7 @@ async function rehearseOpSepolia(args: string[]) {
     hardhat("seed:replace-extension", ...rollout, "--dry-run");
     hardhat("seed:replace-extension", ...rollout, "--impersonate", "auto");
     hardhat("seed:replace-extension", ...rollout, "--check-only");
+    hardhat("seed:ensure-schemas", "--network", "localhost", "--parameters", parametersFile);
 
     // Without --account, check an existing account of the factory (verify-live is read-only).
     const account = option("account") || (await firstAccount(parameters.SeedRollout.factory));

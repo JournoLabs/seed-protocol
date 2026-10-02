@@ -7,7 +7,9 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect } from "chai";
+import type { Contract } from "ethers";
 import hre, { network } from "hardhat";
+import { ensureBaseSchemas } from "../scripts/lib/schemas.js";
 import { replaceExtension } from "../scripts/replace_extension.js";
 import { verifyLiveAccessControl } from "../scripts/verify_live_access_control.js";
 import { createRolloutFixtures } from "./fixtures/rolloutFixture.js";
@@ -41,6 +43,7 @@ describe("seed:verify-live", function () {
     const setup = await networkHelpers.loadFixture(oldRegistryFixture);
     const snapshotFile = path.join(await mkdtemp(path.join(tmpdir(), "seed-routing-")), "routing-before.json");
     await replaceExtension(connection, { factory: setup.factory, extensions: setup.extensions, snapshotFile });
+    await ensureBaseSchemas(setup.schemaRegistry.connect(setup.factoryAdmin) as unknown as Contract, { register: true });
 
     expect(await verify(setup)).to.deep.equal([]);
   });
@@ -53,6 +56,10 @@ describe("seed:verify-live", function () {
     expect(failures.some((f) => f.startsWith("setEas is not routed"))).to.equal(true);
     expect(failures.some((f) => f.startsWith("multiPublish routes to SeedProtocolExtension"))).to.equal(true);
     expect(failures.some((f) => f.startsWith("getSeedExecutor() returns"))).to.equal(true);
+    // The fixture registers "bytes32 version" but not the other base schemas.
+    const schemas = failures.find((f) => f.startsWith("the protocol's base schemas are registered"));
+    expect(schemas).to.include('"bytes32 schemaId,string name"').and.include('"string storage_transaction_id"');
+    expect(schemas).to.not.include('"bytes32 version"');
     // The old stand-in is the hardened contract, so these hold either way.
     expect(failures.some((f) => f.startsWith("multiPublish from a random address"))).to.equal(false);
     expect(failures.some((f) => f.startsWith("account belongs to the factory"))).to.equal(false);

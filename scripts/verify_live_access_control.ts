@@ -2,7 +2,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Contract, Interface, Wallet, ZeroAddress, getAddress } from "ethers";
 import type { HardhatRuntimeEnvironment } from "hardhat/types/hre";
+import { schemaRegistryFor } from "./ensure_schemas.js";
 import { mergeInterfaces } from "./lib/extensions.js";
+import { ensureBaseSchemas } from "./lib/schemas.js";
 import {
   type SeedAddresses,
   buildSeedExtensions,
@@ -16,6 +18,7 @@ import {
  * SeedProtocol deployment using static calls only, so it's safe on any network
  * (docs/deploy-plan.md, P5 and step 5). Exits non-zero on any mismatch.
  *
+ * Base schemas: everything in schemas/base-schemas.json is registered.
  * Access control (access-control plan, step 9):
  *   - multiPublish from a random address reverts with Unauthorized;
  *   - setEas isn't routed;
@@ -123,6 +126,12 @@ export async function verifyLiveAccessControl(
   await check(`getEas() is ${eas}`, async () => {
     const actual = await accountContract.getEas();
     return getAddress(actual) === getAddress(eas) ? null : `returned ${actual}`;
+  });
+
+  await check("the protocol's base schemas are registered", async () => {
+    const registry = await schemaRegistryFor(ethers.provider, hre, eas);
+    const missing = (await ensureBaseSchemas(registry)).filter((r) => r.status === "missing");
+    return missing.length ? `missing ${missing.map((r) => `"${r.schema.schema}"`).join(", ")}` : null;
   });
 
   await check("getSeedExecutor() returns the new executor and EAS", async () => {

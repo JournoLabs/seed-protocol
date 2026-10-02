@@ -1,0 +1,29 @@
+{
+  "description": "EAS schemas the Seed Protocol itself relies on, independent of any app's models. Registered with no resolver and revocable, so their UIDs are the same on every chain. Kept in sync by `hardhat seed:ensure-schemas`; see docs/local-twin-plan.md (T4).",
+  "schemas": [
+    {
+      "key": "version",
+      "schema": "bytes32 version",
+      "resolver": "0x0000000000000000000000000000000000000000",
+      "revocable": true,
+      "uid": "0x13c0fd59d69dbce40501a41f8b37768d26dd2e2bb0cad64615334d84f7b9bdf6",
+      "purpose": "The version attestation multiPublish creates for every seed (versionSchemaUid)."
+    },
+    {
+      "key": "schemaName",
+      "schema": "bytes32 schemaId,string name",
+      "resolver": "0x0000000000000000000000000000000000000000",
+      "revocable": true,
+      "uid": "0x44d562ac1d7cd77e232978687fea027ace48f719cf1d58c7888e509663bb87fc",
+      "purpose": "EAS's schema-naming schema. The SDK names every schema it registers with an attestation of this schema, and finds model schemas by name."
+    },
+    {
+      "key": "storageTransactionId",
+      "schema": "string storage_transaction_id",
+      "resolver": "0x0000000000000000000000000000000000000000",
+      "revocable": true,
+      "uid": "0x55fdefb36fcbbaebeb7d6b41dc3a1a9666e4e42154267c889de064faa7ede517",
+      "purpose": "Links a seed property to the Arweave transaction that stores its file."
+    }
+  ]
+}

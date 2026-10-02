@@ -10,6 +10,12 @@ const predictAddresses = task('seed:predict-addresses', 'Where create2 will depl
   .setAction(() => import('./scripts/predict_addresses.js'))
   .build()
 
+const ensureSchemas = task('seed:ensure-schemas', "Register the protocol's base EAS schemas where missing")
+  .addOption({ name: 'parameters', description: 'Parameters file with SeedProtocol.eas (default: ignition/parameters/<network>.json)', defaultValue: '' })
+  .addFlag({ name: 'checkOnly', description: 'Only report; fail if any are missing' })
+  .setAction(() => import('./scripts/ensure_schemas.js'))
+  .build()
+
 const extensionPayload = task('seed:extension-payload', 'Print the Router Extension structs for a SeedProtocol deployment')
   .addOption({ name: 'deploymentId', description: 'Ignition deployment id (default: chain-<chainId>)', defaultValue: '' })
   .addOption({ name: 'metadataUri', description: 'metadataURI for every extension (input I5)', defaultValue: '' })
@@ -49,7 +55,7 @@ const debugPublish = task('seed:debug-publish', 'Simulate multiPublish on an acc
 
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
-  tasks: [predictAddresses, extensionPayload, replaceExtension, verifyLive, publishSmoke, debugPublish],
+  tasks: [predictAddresses, ensureSchemas, extensionPayload, replaceExtension, verifyLive, publishSmoke, debugPublish],
   paths: {
     sources: './contracts',
   },
