@@ -147,10 +147,10 @@ The SDK calls the legacy `publishLocalId` ABI on the account (access-control pla
    | `utils/deploy.ts`, `utils/index.ts`, `utils/test_attestations.ts` | delete | Only used by the scripts above; `deploy.ts` is the old `deployProxy` path |
 
 9. **OP Sepolia rollout.** This is an operational step: run it together, recording each result here. **Gate:** I1–I4 answered, step 7 green, and the SDK changes from §4 released or ready to ship at the same time.
-   1. `ignition deploy ignition/modules/SeedProtocol.ts --network optimism_sepolia --strategy create2 --parameters ignition/parameters/optimism_sepolia.json --verify`
-   2. `replace_extension.ts --network optimism_sepolia --dry-run`. Review the printed changes.
-   3. `replace_extension.ts --network optimism_sepolia`, or submit the printed calldata from the `EXTENSION_ROLE` wallet (P4).
-   4. `verify_live_access_control.ts --network optimism_sepolia` against a test account.
+   1. `hardhat seed:predict-addresses --network optimism_sepolia` (all four `free`), then `hardhat ignition deploy ignition/modules/SeedProtocol.ts --network optimism_sepolia --strategy create2 --parameters ignition/parameters/optimism_sepolia.json --verify`
+   2. `hardhat seed:replace-extension --network optimism_sepolia --dry-run`. Review the printed changes.
+   3. `hardhat seed:replace-extension --network optimism_sepolia`, or submit the printed calldata from the `EXTENSION_ROLE` wallet and then run it with `--check-only` (P4).
+   4. `hardhat seed:verify-live --network optimism_sepolia --account <test account>`.
    5. An admin publish and a session-key publish from the updated SDK against a test account.
    6. Retire the old executor `0x0434…`. It can't be removed from the chain, so: point the SDK config at the new one, and if I4 finds accounts that installed it, have them uninstall it.
    7. Commit `ignition/deployments/`, record the addresses below, and delete `.openzeppelin/` and `deployments/` (P9).
@@ -186,10 +186,10 @@ The SDK also needs the new addresses (executor, extensions) from step 9.7.
 
 | ID | Input | Needed by |
 |----|-------|-----------|
-| I1 | `ManagedAccountFactory` address on OP Sepolia | step 4 (parameters), step 7 |
-| I2 | Who holds `EXTENSION_ROLE`, and can a script use that key (raw key / keystore) or is it a dashboard/Safe wallet? Decides P4's mode. | step 4, step 9.3 |
-| I3 | A test account (and its admin key) on OP Sepolia for the fork rehearsal and post-deploy checks | steps 7, 9.4–9.5 |
-| I4 | Did any account install the old executor `0x0434…`? (Old SDK automation keys, or non-thirdweb ERC-7579 accounts) | step 9.6 |
+| I1 | `ManagedAccountFactory` address on OP Sepolia. Goes in `ignition/parameters/optimism_sepolia.json` as `SeedRollout.factory`. **Open.** | step 7, step 9 |
+| I2 | Who holds `EXTENSION_ROLE`, and can a script use that key (raw key / keystore) or is it a dashboard/Safe wallet? Decides P4's mode. The factory is `PermissionsEnumerable`, so `seed:replace-extension --dry-run` lists the holders once I1 is known; what's left is whether a script can sign for them. **Open.** | step 9.3 |
+| I3 | A test account (and its admin address) on OP Sepolia for `verify-live` and an impersonated admin publish. The admin *key* is no longer needed: the session-key publish runs on a fresh account the rehearsal creates on the real factory. **Open.** | steps 7, 9.4–9.5 |
+| I4 | Did any account install the old executor `0x0434…`? **Answered: no (2026-10-02).** See the progress log. | step 9.6 |
 | I5 | `metadataURI` for the extension metadata. The old ones were thirdweb-published IPFS URIs; `""` works on-chain. | step 3 |
 | I6 | Keep `decode_attestation_data.ts`? | step 8 |
 | I7 | Deployer key for OP Sepolia. Today `DEV_KEY`; consider `hardhat-keystore` (installed) instead of a plaintext `.env` | step 9.1 |
@@ -215,4 +215,30 @@ The access-control plan's §6 future work (per-account schema allowlist, per-del
 
 ## 8. Progress log
 
-*(empty)*
+**2026-10-02: steps 1–6 and 8 done; step 7 tooling done, run pending I1; step 10 done except marking §4.** 126 tests pass (116 before this work) and the whole project type-checks; `rehearse:local` is green.
+
+What changed from the plan as written:
+- **Rollout scripts are Hardhat tasks** (`seed:*`; see the README's task table), because `hardhat run` can't take flags like `--dry-run`. The files keep their planned names in `scripts/`, and each task's body is an exported function the tests call on the in-process network.
+- **The in-process and `localhost` networks moved from chain 1337 to 31337.** Ignition only bootstraps CreateX on 31337. `localhost` no longer pins a chain id, so it serves both rehearsals, and it uses the node's unlocked accounts (so `LOCALHOST_TESTING_KEY` is gone).
+- **`seed:replace-extension` sends one `multicall`** (the factory has `Multicall`), so the replace and the add land together, and a hand-submitted call is a single transaction. It replaces the Seed extension under whatever name it's registered as (`replaceExtension` keys on the name) and refuses if more than one registered extension looks like a predecessor, or if any new selector is routed to an unrelated extension. `routing-before.json` holds the factory's whole registry and its `EXTENSION_ROLE` holders, and is never overwritten.
+- **Both rehearsals run on a `hardhat node`,** not an in-process fork: every task is its own process, and an in-process fork would forget state between them. `rehearse:op-sepolia` starts the node on `optimism_sepolia_fork`.
+- **The fork rehearsal can't deploy from the real deployer:** Ignition refuses an impersonated `--default-sender`. It deploys from a node account instead (different CREATE2 addresses, same routing and access control), and the new **`seed:predict-addresses`** covers the real addresses. That task `eth_call`s CreateX's `deployCreate2` from the deployer, with the executor's code as a state override for the router extension. It's read-only, so it also runs against live OP Sepolia.
+- **New `seed:publish-smoke`** does the "admin publish" and "session-key publish" steps. `createAccount` is permissionless, so on the fork it creates a fresh account on the real factory with a local admin key. That's why I3 no longer needs the test account's admin key.
+- **P2 verified against CreateX's source** (`_guard`/`_parseSalt`): the salt `deployer ‖ 0x00 ‖ "seed-v1"` yields `keccak256(deployer ‖ salt)` for the deployer; any other sender lands in the "random" branch, `keccak256(abi.encode(salt))`. `test/ignition.SeedProtocol.test.ts` checks both against a real CreateX.
+- **Step 8:** `debug_multi_publish.ts` is ported as `seed:debug-publish`, which simulates through the *account* rather than the extension. `utils/test_data.ts` is deleted rather than fixed, and so is `print_test_json.ts`, which only printed it. The maintained samples are `test/fixtures/multi_publish_*.json`. `decode_attestation_data.ts` is the only file left out of the type-check, pending I6.
+- **Account helpers** (session keys, UserOps, publish requests) moved from the test fixture to `scripts/lib/managedAccount.ts` so the rehearsal can use them; the fixture re-exports them.
+
+**Predicted OP Sepolia addresses** (`seed:predict-addresses --network optimism_sepolia`, deployer `0x00467f…4D84B`, salt label `seed-v1`, solc 0.8.27/paris). All four are `free`, and CreateX would deploy exactly there:
+
+| Contract | Address |
+|----------|---------|
+| `SeedProtocolExtension` | `0x2ee2571cF7C68998292A6E1715Dc4F799A4D5CB4` |
+| `SeedProtocolExtensionV2` | `0xF24554E658F167d5DE937066be4824C731183880` |
+| `SeedProtocolExecutor` | `0x7AaC33b02a63035452fA5eee07F45351c0684B62` |
+| `SeedExecutorRouterExtension` | `0x8eAe1425c19394b1199eA553f50547A6bA8FEf08` |
+
+These change if the deployer (I7), the salt label, the compiler settings (P3) or the contracts change.
+
+**I4: nobody installed the old executor.** `0x043462304114da543add6B693c686B7d98865F3E` was created at block 39,946,574 by `0x00467f…4D84B` (DEV_KEY). Etherscan V2 shows no other transaction to it, no internal calls into it (an account's `onInstall` would be one), and no logs at all, including its `ModuleInitialized`. Caveat: the full-range log query couldn't be cross-checked against a known-busy contract (EAS timed out), so the transaction lists are the main evidence. Step 9.6 is then just pointing the SDK at the new executor.
+
+**Fork run so far:** `optimism_sepolia_fork` starts through the Alchemy URL. Predict, the create2 deploy (CreateX present with the expected bytecode) and `extension-payload` work on it. The rest needs I1.

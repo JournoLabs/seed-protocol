@@ -99,6 +99,8 @@ So any revoke function a delegate can reach could revoke **all** of the account'
 ## 3. Work breakdown (one commit each)
 
 > **Deployment moved:** step 9 (deployment tooling), the remainder of step 10 (docs), §4 (OP Sepolia rollout), §4b (client changes) and §5 (inputs) are carried forward and tracked in [docs/deploy-plan.md](../deploy-plan.md). The sections below are kept as the original record.
+>
+> **Status (2026-10-02):** steps 9 and 10 are done there (deploy plan steps 1–8 and 10; the security model and session-key setup are in the README). §4 waits on deploy plan step 9.
 
 1. **Test harness for real thirdweb accounts.** Add `contracts/test/ThirdwebHarness.sol` importing `EntryPoint`, `ManagedAccountFactory` and `ManagedAccount`. Add `test/fixtures/managedAccountFixture.js`, which:
    - deploys EAS, SchemaRegistry, EntryPoint and the factory;
