@@ -1,15 +1,32 @@
 /**
  * Gas benchmark tests for SeedProtocolExtension.
- * Run with REPORT_GAS=1 to enable gas reporter output.
+ * Run with `bun run test:gas` (hardhat test --gas-stats) to see gas usage.
  */
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { extensionEASFixture } = require("./fixtures/extensionEASFixture");
-const { GAS_PAYLOADS } = require("./fixtures/gas_payloads");
+import { expect } from "chai";
+import { network } from "hardhat";
+import { createExtensionEASFixture } from "./fixtures/extensionEASFixture.js";
+import { GAS_PAYLOADS } from "./fixtures/gas_payloads.js";
+import { createManagedAccountFixtures } from "./fixtures/managedAccountFixture.js";
 
-function substitutePlaceholders(payload, manifest) {
-  const replacer = (obj) => {
+const connection = await network.create();
+const { loadFixture } = connection.networkHelpers;
+const extensionEASFixture = createExtensionEASFixture(createManagedAccountFixtures(connection));
+
+type Manifest = Record<
+  | "seedSchemaUid"
+  | "seedSchemaUid1"
+  | "seedSchemaUid2"
+  | "seedSchemaUid3"
+  | "versionSchemaUid"
+  | "propertySchemaUid"
+  | "propertySchemaUid1"
+  | "propertySchemaUid2"
+  | "propertySchemaUid3",
+  string
+>;
+
+function substitutePlaceholders(payload: unknown[], manifest: Manifest): any[] {
+  const replacer = (obj: unknown): unknown => {
     if (typeof obj === "string") {
       return obj
         .replace(/__SEED_SCHEMA_UID_1__/g, manifest.seedSchemaUid1 ?? manifest.seedSchemaUid)
@@ -24,17 +41,17 @@ function substitutePlaceholders(payload, manifest) {
     }
     if (Array.isArray(obj)) return obj.map(replacer);
     if (obj !== null && typeof obj === "object") {
-      const out = {};
+      const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(obj)) out[k] = replacer(v);
       return out;
     }
     return obj;
   };
-  return replacer(payload);
+  return replacer(payload) as any[];
 }
 
-function normalizePayload(payload, usePublishIndex = false) {
-  const localIdToIndex = {};
+function normalizePayload(payload: any[], usePublishIndex = false) {
+  const localIdToIndex: Record<string, number> = {};
   payload.forEach((req, i) => {
     localIdToIndex[req.localId] = i;
   });
@@ -46,9 +63,9 @@ function normalizePayload(payload, usePublishIndex = false) {
     versionUid: req.versionUid,
     versionSchemaUid: req.versionSchemaUid,
     seedIsRevocable: req.seedIsRevocable,
-    listOfAttestations: req.listOfAttestations.map((a) => ({
+    listOfAttestations: req.listOfAttestations.map((a: any) => ({
       schema: a.schema,
-      data: a.data.map((d) => ({
+      data: a.data.map((d: any) => ({
         recipient: d.recipient,
         expirationTime: typeof d.expirationTime === "string" ? BigInt(d.expirationTime) : d.expirationTime,
         revocable: d.revocable,
@@ -57,7 +74,7 @@ function normalizePayload(payload, usePublishIndex = false) {
         value: typeof d.value === "string" ? BigInt(d.value) : d.value,
       })),
     })),
-    propertiesToUpdate: (req.propertiesToUpdate || []).map((p) => {
+    propertiesToUpdate: (req.propertiesToUpdate || []).map((p: any) => {
       if (usePublishIndex && "publishLocalId" in p) {
         const idx = localIdToIndex[p.publishLocalId];
         if (idx === undefined) throw new Error(`Unknown publishLocalId: ${p.publishLocalId}`);
@@ -75,9 +92,9 @@ function normalizePayload(payload, usePublishIndex = false) {
 }
 
 describe("SeedProtocolExtension (gas)", function () {
-  let extension;
-  let owner;
-  let manifest;
+  let extension: Awaited<ReturnType<typeof extensionEASFixture>>["extension"];
+  let owner: Awaited<ReturnType<typeof extensionEASFixture>>["owner"];
+  let manifest: Manifest;
 
   beforeEach(async function () {
     const fixture = await loadFixture(extensionEASFixture);
@@ -103,7 +120,7 @@ describe("SeedProtocolExtension (gas)", function () {
       const extConnected = extension.connect(owner);
       const tx = await extConnected.multiPublish(normalized, { value: 0n });
       const receipt = await tx.wait();
-      expect(receipt.status).to.equal(1);
+      expect(receipt?.status).to.equal(1);
     });
   }
 });

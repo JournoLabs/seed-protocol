@@ -204,7 +204,7 @@ The port is done when the Hardhat 3 run reaches the same **116 passing**.
 | `SeedProtocolExtension.access.test.js` | 18 | `SeedProtocolExtension.access.test.ts` | 18 | |
 | `SeedProtocolExtension.crossref.test.js` | 20 | `SeedProtocolExtension.crossref.test.ts` | 20 | |
 | `SeedExecutorRouterExtension.test.js` | 22 | `SeedExecutorRouterExtension.test.ts` | 22 | |
-| `SeedProtocolExtension.gas.test.js` | 5 | `SeedProtocolExtension.gas.test.ts` | | |
+| `SeedProtocolExtension.gas.test.js` | 5 | `SeedProtocolExtension.gas.test.ts` | 5 | |
 | `SeedProtocol.ts` | 5 | — | deleted | stale POC suite (H8) |
 
 ## 5. Risks and things to verify
@@ -238,3 +238,12 @@ The port is done when the Hardhat 3 run reaches the same **116 passing**.
 - **Step 4 (fixtures):** the four fixtures are TypeScript ESM. Fixtures that need a network come from factories that take the test file's connection (`createManagedAccountFixtures`, `createExecutorEASFixture`, `createExtensionEASFixture`); the pure helpers are plain exports. `DynamicContract` keeps the merged-ABI account's methods typed through `.connect()`. `tsconfig` lists `types: ["node", "mocha"]`, because an implicit `@types/minimatch` had made `tsc` stop before checking any code.
 - **Step 5 (suites):** all five suites are ported to `.test.ts`, one commit each: **111 passing**, the same as the Hardhat 2 `npm test` baseline, run together in one process. `test/` is type-clean, `test/SeedProtocol.ts` is deleted (H8), and the unused `callExecutorFromAccountStatic` helper was dropped. One test is renamed, since its manifest branch is gone (H7): "should track separate EAS addresses per account". The router-guard mutation check was re-run against the ported suite: all 10 guards are caught (`executeFromExecutor` caller / installed / mode / min length / target / selector / value, double install, double uninstall, install-uninstall auth).
 - **Known gap until step 7:** `tsc` reports errors in `scripts/`, which are Hardhat 2 scripts (H9). CI type-checking (step 8) must cover `test/` only until the deploy branch.
+- **Step 6 (gas and coverage):** the gas suite is ported, and `bun run test` gives **116 passing**, the full Hardhat 2 baseline.
+  - `test:gas` → `hardhat test --gas-stats`. It attributes `multiPublish` to `SeedProtocolExtension` *via ManagedAccount*, so the numbers include Router overhead (median 1,060,847 gas over the five payloads; a fresh baseline). `--gas-stats-json <path>` saves them.
+  - `coverage` → `hardhat test --coverage` (HTML and lcov in the ignored `coverage/`). Total: 91.3% of lines, 87.7% of statements.
+  - Removed: `gas_benchmark.ts`, `compare_gas_reports.ts`, the `gas:*` scripts, and `test:localhost` (H7).
+  - Left alone: `gasReporterOutput.json` and `gas-reports/` are local, untracked output from the old reporter, so they weren't deleted.
+  - Coverage gaps in production contracts, recorded for follow-up rather than fixed here:
+    - `SeedExecutorRouterExtension` constructor `InvalidAddress` checks (lines 74–75)
+    - `SeedProtocolExtensionBase` line 113
+    - `SeedProtocolExecutor` lines 311 and 385, plus the unused `ModeLib.encodeSimpleBatch` (37–39)

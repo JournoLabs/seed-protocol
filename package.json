@@ -9,13 +9,10 @@
   "scripts": {
     "build": "hardhat build",
     "test": "hardhat test",
-    "test:localhost": "USE_LOCALHOST=1 npx hardhat test test/SeedProtocolExecutor.test.js --network localhost",
     "setup:local": "bun run scripts/setup_local.ts",
     "validate:local": "npx hardhat run scripts/validate_multi_publish_local.ts --network localhost",
-    "gas:benchmark": "npx hardhat run scripts/gas_benchmark.ts",
-    "gas:benchmark:save": "REPORT_GAS_OUTPUT=gas-reports/gas-report-$(date +%Y%m%d-%H%M%S).json npx hardhat run scripts/gas_benchmark.ts",
-    "gas:compare": "npx hardhat run scripts/compare_gas_reports.ts",
-    "test:gas": "REPORT_GAS=1 npx hardhat test test/SeedProtocolExtension.gas.test.js"
+    "test:gas": "hardhat test --gas-stats",
+    "coverage": "hardhat test --coverage"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.2.0",
