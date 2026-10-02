@@ -217,6 +217,8 @@ The port is done when the Hardhat 3 run reaches the same **116 passing**.
 
 ## 6. Follow-ups (not in this branch)
 
+> The deploy-branch items below are now planned in [deploy-plan.md](deploy-plan.md). The other follow-ups stay here.
+
 - Deploy branch:
   - port or replace `scripts/` (Hardhat Ignition, or plain TS scripts over `network.create()`)
   - Etherscan V2 verification via `hardhat-verify` v3
