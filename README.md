@@ -62,6 +62,6 @@ They're only resolved when a task needs them; building and testing need none.
 
 ## Scripts and deployment
 
-Deployment is being reworked per [docs/deploy-plan.md](docs/deploy-plan.md). `bun run rehearse:local` runs the whole rollout against a throwaway `hardhat node`. Files in `scripts/` that start with a "not yet ported" note are still Hardhat 2 scripts and won't run.
+Deployment is being reworked per [docs/deploy-plan.md](docs/deploy-plan.md). `bun run rehearse:local` runs the whole rollout against a throwaway `hardhat node`.
 
-`scripts/get_4_byte_selectors.ts` and `scripts/print_test_json.ts` don't depend on Hardhat and run with `bun`.
+`scripts/get_4_byte_selectors.ts` doesn't depend on Hardhat and runs with `bun`. `scripts/decode_attestation_data.ts` is an unported Hardhat 2 scratch script, pending a keep-or-delete decision (deploy plan, I6).

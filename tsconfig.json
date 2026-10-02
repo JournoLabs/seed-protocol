@@ -9,8 +9,9 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["node", "mocha"],
-    "typeRoots": ["scripts/types", "node_modules/@types"]
+    "types": ["node", "mocha"]
   },
-  "include": ["hardhat.config.ts", "ignition/**/*", "scripts/**/*", "test/**/*", "types/**/*"]
+  "include": ["hardhat.config.ts", "ignition/**/*", "scripts/**/*", "test/**/*", "types/**/*"],
+  // Hardhat 2 scratch script, kept or deleted per docs/deploy-plan.md input I6.
+  "exclude": ["scripts/decode_attestation_data.ts"]
 }

@@ -40,9 +40,16 @@ const publishSmoke = task('seed:publish-smoke', 'Admin and session-key publishes
   .setAction(() => import('./scripts/publish_smoke.js'))
   .build()
 
+const debugPublish = task('seed:debug-publish', 'Simulate multiPublish on an account and decode the revert (read-only)')
+  .addOption({ name: 'account', description: 'The account to call', defaultValue: '' })
+  .addOption({ name: 'payload', description: 'JSON file with the publish requests', defaultValue: '' })
+  .addOption({ name: 'from', description: 'Caller, normally an account admin (default: first signer)', defaultValue: '' })
+  .setAction(() => import('./scripts/debug_multi_publish.js'))
+  .build()
+
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
-  tasks: [predictAddresses, extensionPayload, replaceExtension, verifyLive, publishSmoke],
+  tasks: [predictAddresses, extensionPayload, replaceExtension, verifyLive, publishSmoke, debugPublish],
   paths: {
     sources: './contracts',
   },
