@@ -15,9 +15,19 @@ const extensionPayload = task('seed:extension-payload', 'Print the Router Extens
   .setAction(() => import('./scripts/build_extension_payload.js'))
   .build()
 
+const replaceExtension = task('seed:replace-extension', "Point the ManagedAccountFactory's Router at a SeedProtocol deployment")
+  .addOption({ name: 'parameters', description: 'File with SeedRollout.factory (default: ignition/parameters/<network>.json)', defaultValue: '' })
+  .addOption({ name: 'deploymentId', description: 'Ignition deployment id (default: chain-<chainId>)', defaultValue: '' })
+  .addOption({ name: 'metadataUri', description: 'metadataURI for every extension (input I5)', defaultValue: '' })
+  .addOption({ name: 'impersonate', description: 'Send as this EXTENSION_ROLE holder (simulated networks only)', defaultValue: '' })
+  .addFlag({ name: 'dryRun', description: 'Print the planned changes and calldata; write and send nothing' })
+  .addFlag({ name: 'checkOnly', description: 'Only read the Router back against routing-before.json' })
+  .setAction(() => import('./scripts/replace_extension.js'))
+  .build()
+
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
-  tasks: [extensionPayload],
+  tasks: [extensionPayload, replaceExtension],
   paths: {
     sources: './contracts',
   },
