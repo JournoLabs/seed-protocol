@@ -3,12 +3,12 @@
  * CreateX, and the sender-guarded salt it relies on. See docs/deploy-plan.md (P2, step 1).
  */
 import { expect } from "chai";
-import { AbiCoder, Contract, concat, dataSlice, getCreate2Address, keccak256 } from "ethers";
+import { Contract, dataSlice } from "ethers";
 import hre, { network } from "hardhat";
 import SeedProtocolModule from "../ignition/modules/SeedProtocol.js";
-import { createxSalt } from "../scripts/lib/createxSalt.js";
+import { createxAddress, createxSalt } from "../scripts/lib/createxSalt.js";
+import { predictAddresses } from "../scripts/predict_addresses.js";
 
-const CREATE_X = "0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed";
 const OP_EAS = "0x4200000000000000000000000000000000000021";
 const SEED_DEPLOYER = "0x00467fe2608Dff148C83009927E4e7234Bc4D84B";
 
@@ -17,17 +17,6 @@ const CONTRACTS = [
   { key: "seedProtocolExtensionV2", name: "SeedProtocolExtensionV2", args: (eas: string) => [eas] },
   { key: "seedProtocolExecutor", name: "SeedProtocolExecutor", args: () => [] },
 ] as const;
-
-/** The salt CreateX's `_guard` actually passes to CREATE2 for `sender`. */
-function guardedSalt(salt: string, sender: string): string {
-  const saltSender = dataSlice(salt, 0, 20).toLowerCase();
-  const flag = dataSlice(salt, 20, 21);
-  if (saltSender === sender.toLowerCase() && flag === "0x00") {
-    return keccak256(concat([AbiCoder.defaultAbiCoder().encode(["address"], [sender]), salt]));
-  }
-  // The "random" branch: anyone else using this salt.
-  return keccak256(AbiCoder.defaultAbiCoder().encode(["bytes32"], [salt]));
-}
 
 describe("SeedProtocol Ignition module (create2)", function () {
   it("configures a salt guarded for the Seed deployer, without cross-chain redeploy protection", function () {
@@ -58,11 +47,14 @@ describe("SeedProtocol Ignition module (create2)", function () {
     async function predict(name: string, args: unknown[], sender: string) {
       const factory = await ethers.getContractFactory(name);
       const initCode = (await factory.getDeployTransaction(...args)).data;
-      return getCreate2Address(CREATE_X, guardedSalt(salt, sender), keccak256(initCode));
+      return createxAddress(salt, sender, initCode);
     }
 
-    const ownerDeployment = await deployFrom(owner.address);
+    // The other sender goes first: it also makes Ignition bootstrap CreateX on this chain.
     const otherDeployment = await deployFrom(other.address);
+    const predicted = await predictAddresses(connection, hre, { eas, deployer: owner.address, salt });
+    expect(predicted.map((p) => p.status)).to.deep.equal(["free", "free", "free", "free"]);
+    const ownerDeployment = await deployFrom(owner.address);
 
     for (const { key, name, args } of CONTRACTS) {
       const ownerAddress = await ownerDeployment[key].getAddress();
@@ -71,6 +63,11 @@ describe("SeedProtocol Ignition module (create2)", function () {
       expect(otherAddress, `${name} (other sender)`).to.equal(await predict(name, args(eas), other.address));
       expect(otherAddress, name).to.not.equal(ownerAddress);
     }
+
+    // seed:predict-addresses saw the same addresses, router extension included.
+    for (const p of predicted) expect(await ownerDeployment[p.contract].getAddress(), p.contract).to.equal(p.address);
+    const after = await predictAddresses(connection, hre, { eas, deployer: owner.address, salt });
+    expect(after.map((p) => p.status)).to.deep.equal(["deployed", "deployed", "deployed", "deployed"]);
 
     // The router extension's address depends on the executor's, so check its wiring rather than predict it.
     const executor = await ownerDeployment.seedProtocolExecutor.getAddress();

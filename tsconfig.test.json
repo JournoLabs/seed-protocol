@@ -3,5 +3,5 @@
   // until the deploy branch ports it (docs/hardhat3-migration-plan.md, H9);
   // fold this back into tsconfig.json once that's done.
   "extends": "./tsconfig.json",
-  "include": ["hardhat.config.ts", "ignition/**/*", "scripts/lib/**/*", "scripts/build_extension_payload.ts", "scripts/replace_extension.ts", "scripts/verify_live_access_control.ts", "scripts/publish_smoke.ts", "scripts/rehearse.ts", "test/**/*", "types/**/*"]
+  "include": ["hardhat.config.ts", "ignition/**/*", "scripts/lib/**/*", "scripts/build_extension_payload.ts", "scripts/replace_extension.ts", "scripts/verify_live_access_control.ts", "scripts/publish_smoke.ts", "scripts/rehearse.ts", "scripts/predict_addresses.ts", "test/**/*", "types/**/*"]
 }

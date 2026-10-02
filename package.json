@@ -12,7 +12,8 @@
     "test": "hardhat test",
     "test:gas": "hardhat test --gas-stats",
     "coverage": "hardhat test --coverage",
-    "rehearse:local": "bun scripts/rehearse.ts local"
+    "rehearse:local": "bun scripts/rehearse.ts local",
+    "rehearse:op-sepolia": "bun scripts/rehearse.ts op-sepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.2.0",

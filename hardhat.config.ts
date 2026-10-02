@@ -1,14 +1,15 @@
 import 'dotenv/config'
 import { configVariable, defineConfig, task } from 'hardhat/config'
 import hardhatToolboxMochaEthers from '@nomicfoundation/hardhat-toolbox-mocha-ethers'
-import { createxSalt } from './scripts/lib/createxSalt.js'
-
-// Deploys go through CreateX with a sender-guarded salt (docs/deploy-plan.md, P2).
-// Only this address gets the canonical Seed addresses; it must be the key that runs
-// `ignition deploy` on public networks (input I7). Today that's DEV_KEY.
-const SEED_DEPLOYER = '0x00467fe2608Dff148C83009927E4e7234Bc4D84B'
+import { SEED_DEPLOYER, SEED_SALT_LABEL, createxSalt } from './scripts/lib/createxSalt.js'
 
 // Rollout scripts (docs/deploy-plan.md). Tasks rather than `hardhat run` so they take flags.
+const predictAddresses = task('seed:predict-addresses', 'Where create2 will deploy SeedProtocol, and whether it would succeed (read-only)')
+  .addOption({ name: 'parameters', description: 'Parameters file (default: ignition/parameters/<network>.json)', defaultValue: '' })
+  .addOption({ name: 'deployer', description: 'Deployer address (default: the Seed deployer the salt is guarded for)', defaultValue: '' })
+  .setAction(() => import('./scripts/predict_addresses.js'))
+  .build()
+
 const extensionPayload = task('seed:extension-payload', 'Print the Router Extension structs for a SeedProtocol deployment')
   .addOption({ name: 'deploymentId', description: 'Ignition deployment id (default: chain-<chainId>)', defaultValue: '' })
   .addOption({ name: 'metadataUri', description: 'metadataURI for every extension (input I5)', defaultValue: '' })
@@ -19,7 +20,7 @@ const replaceExtension = task('seed:replace-extension', "Point the ManagedAccoun
   .addOption({ name: 'parameters', description: 'File with SeedRollout.factory (default: ignition/parameters/<network>.json)', defaultValue: '' })
   .addOption({ name: 'deploymentId', description: 'Ignition deployment id (default: chain-<chainId>)', defaultValue: '' })
   .addOption({ name: 'metadataUri', description: 'metadataURI for every extension (input I5)', defaultValue: '' })
-  .addOption({ name: 'impersonate', description: 'Send as this EXTENSION_ROLE holder (simulated networks only)', defaultValue: '' })
+  .addOption({ name: 'impersonate', description: 'Send as this EXTENSION_ROLE holder, or "auto" for the first one (simulated networks only)', defaultValue: '' })
   .addFlag({ name: 'dryRun', description: 'Print the planned changes and calldata; write and send nothing' })
   .addFlag({ name: 'checkOnly', description: 'Only read the Router back against routing-before.json' })
   .setAction(() => import('./scripts/replace_extension.js'))
@@ -41,7 +42,7 @@ const publishSmoke = task('seed:publish-smoke', 'Admin and session-key publishes
 
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
-  tasks: [extensionPayload, replaceExtension, verifyLive, publishSmoke],
+  tasks: [predictAddresses, extensionPayload, replaceExtension, verifyLive, publishSmoke],
   paths: {
     sources: './contracts',
   },
@@ -73,11 +74,20 @@ export default defineConfig({
       // Hardhat's default. Ignition's create2 strategy only bootstraps CreateX on 31337.
       chainId: 31337,
     },
+    // A running `hardhat node`, local or forking (the rehearsals). No chainId pin,
+    // so it works for both; accounts are the node's own unlocked ones.
     localhost: {
       type: 'http',
       url: 'http://127.0.0.1:8545',
-      chainId: 31337,
-      // `hardhat node`'s own unlocked accounts (rehearse:local).
+    },
+    // OP Sepolia state, simulated. rehearse:op-sepolia runs `hardhat node` on it.
+    optimism_sepolia_fork: {
+      type: 'edr-simulated',
+      chainType: 'op',
+      chainId: 11155420,
+      forking: {
+        url: configVariable('OPTIMISM_SEPOLIA_RPC_URL'),
+      },
     },
     optimism_sepolia: {
       type: 'http',
@@ -90,7 +100,8 @@ export default defineConfig({
   ignition: {
     strategyConfig: {
       create2: {
-        salt: createxSalt(SEED_DEPLOYER, 'seed-v1'),
+        // Deploys go through CreateX with a sender-guarded salt (docs/deploy-plan.md, P2).
+        salt: createxSalt(SEED_DEPLOYER, SEED_SALT_LABEL),
       },
     },
   },

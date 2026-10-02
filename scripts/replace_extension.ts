@@ -83,6 +83,9 @@ export async function replaceExtension(
 ): Promise<{ sent: boolean }> {
   const factoryAddress = getAddress(factory.target as string);
   console.log(`Factory ${factoryAddress}`);
+  if ((await connection.ethers.provider.getCode(factoryAddress)) === "0x") {
+    throw new Error(`No contract at factory ${factoryAddress} on this network; check SeedRollout.factory (input I1).`);
+  }
 
   if (checkOnly) {
     await check(factory, await readSnapshot(snapshotFile), extensions);
@@ -117,6 +120,10 @@ export async function replaceExtension(
 
   await saveSnapshot(snapshotFile, before);
 
+  if (impersonate === "auto") {
+    if (!before.extensionRoleHolders.length) throw new Error("--impersonate auto: nobody holds EXTENSION_ROLE");
+    impersonate = before.extensionRoleHolders[0];
+  }
   const sender = await resolveSender(connection, impersonate);
   if (!(await factory.hasRole(EXTENSION_ROLE, sender.address))) {
     printCall(tx, changes);
