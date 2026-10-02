@@ -95,12 +95,14 @@ export default defineConfig({
     },
     // OP Sepolia state under its own chain id, so a transaction that misses the local
     // config can't be valid on the real chain (docs/local-twin-plan.md, T1).
+    // `bun run twin:up` pins the block with TWIN_FORK_BLOCK.
     op_sepolia_twin: {
       type: 'edr-simulated',
       chainType: 'op',
       chainId: 31337,
       forking: {
         url: configVariable('OPTIMISM_SEPOLIA_RPC_URL'),
+        ...(process.env.TWIN_FORK_BLOCK ? { blockNumber: BigInt(process.env.TWIN_FORK_BLOCK) } : {}),
       },
     },
     // OP Sepolia state, simulated. rehearse:op-sepolia runs `hardhat node` on it.

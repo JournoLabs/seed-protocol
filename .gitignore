@@ -26,3 +26,7 @@ metadata
 # Ignition records for local and rehearsal chains (public-network records are committed)
 /ignition/deployments/chain-31337
 /ignition/deployments/op-sepolia-fork-rehearsal
+/ignition/deployments/twin
+
+# Local twin state: generated test keys and twin.json (docs/local-twin-plan.md)
+/.twin

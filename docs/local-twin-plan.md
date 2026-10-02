@@ -50,15 +50,16 @@ The changes needed (§4) are making existing settings work end to end: chain, RP
 
 ## 3. Twin tooling in this repo
 
-- **`bun run twin:up`**:
-  1. starts the forking node with chain id 31337;
-  2. applies the rollout (as `rehearse:op-sepolia` does);
-  3. runs `seed:ensure-schemas`;
-  4. funds the test accounts;
-  5. starts the bundler and, once ready, the indexer;
-  6. prints a summary of endpoints, addresses and accounts.
-- **`bun run twin:down`** stops it all.
-- The fork block is pinned, so every `up` produces the same state.
+- **`bun run twin:up`** (done, `scripts/twin.ts`). Runs in the foreground, and Ctrl-C stops everything.
+  1. Starts the forking node: chain id 31337, OP Sepolia pinned at block 49,590,000. `--fork-block <n|latest>` overrides the block.
+  2. Applies the rollout with the real commands, then `seed:ensure-schemas` and `seed:verify-live`.
+  3. Funds five test accounts (alice … erin, 100 ETH each). Their keys are fresh, created once per checkout in `.twin/keys.json` (gitignored), so they're the same on every `up`.
+  4. Starts the bundler: alto, a dev dependency, on `:4337`.
+  5. Runs the smoke tests: `seed:publish-smoke` (direct and `handleOps` paths), then a UserOp **through the bundler** that deploys alice's ManagedAccount and publishes through it.
+  6. Writes `.twin/twin.json` for the SDK and apps: chain id, RPC and bundler URLs, EntryPoint, every contract address, base schema UIDs, and the accounts with their keys.
+- **Not started by `twin:up`:**
+  - the EAS indexer. `../eas-indexing-service` hardcodes its chain configs in `utils.ts`, so it needs a 31337 entry with the twin's EAS/registry addresses, `rpcProvider: http://host.docker.internal:8545` and `contractStartBlock` = fork block + 1;
+  - the seed gateway: run `../seed-protocol-server` alongside.
 
 ## 4. Changes outside this repo
 
@@ -79,8 +80,8 @@ A local-network mode driven by env vars (chain id, RPC, bundler, indexer, Arweav
 
 ## 5. Order of work
 
-1. **Spike.** Fork with its own chain id; a local bundler on EntryPoint v0.6; a thirdweb smart-wallet UserOp through it from a script, publishing via the new Seed extension. Results in §8.
-2. **This repo:** `seed:ensure-schemas` + checks; `twin:up`/`twin:down`.
+1. **Spike** (done). Fork with its own chain id; a local bundler on EntryPoint v0.6; a thirdweb smart-wallet UserOp through it from a script, publishing via the new Seed extension. Results in §8.
+2. **This repo** (done): `seed:ensure-schemas` + checks (`schemas/base-schemas.json`), and `twin:up`.
 3. **SDK:** network configuration, proven with a script-driven publish against the twin; then the deploy plan §4 changes.
 4. **Reads:** `eas-indexing-service` on the twin, and the SDK pointed at it.
 5. **permapress** in local mode, then **permapress-api**.
@@ -130,6 +131,8 @@ A local-network mode driven by env vars (chain id, RPC, bundler, indexer, Arweav
 
 **Gotchas found (these go into `twin:up`):**
 - **Don't use Hardhat's well-known keys on the twin.** Everyone uses them on public testnets, so on the fork account #0 already has nonce 6,399 and real history. Use fresh random keys, funded with `hardhat_setBalance`.
+- **ethers' pending-nonce lookup lags a block behind on the fork.** Back-to-back sends from one `Wallet` reuse a nonce ("Nonce too low"), so wrap it in `NonceManager`. Hardhat tasks are unaffected, because they send through the node's accounts. The SDK's viem client could hit the same problem.
+- **No paymaster means the account pays.** A ManagedAccount must hold ETH before its first UserOp (`AA21 didn't pay prefund`). `twin:up` funds alice's; apps on the twin need to fund theirs, or the SDK has to handle it.
 - **Log queries that reach before the fork block are forwarded to the RPC.** On the Alchemy free tier (10-block `eth_getLogs` limit) they fail with HTTP 400. alto's UserOp receipt lookup hit this; `--max-block-range 5` keeps it on local blocks. The indexer will hit the same thing: it must start at the fork block.
 - **`eth_call` from an unfunded address fails on the twin**, because an OP-type node charges the L1 data fee up front. Callers that simulate from fresh addresses need a balance or a state override. `seed:verify-live` has this fix; `simulateCallFromAccount` in the SDK may need it too.
 

@@ -60,7 +60,7 @@ Network credentials are read with Hardhat's `configVariable()`, from the environ
 | Variable | Used for |
 |----------|----------|
 | `OPTIMISM_SEPOLIA_RPC_URL`, `DEV_KEY` | `--network optimism_sepolia` |
-| `OPTIMISM_SEPOLIA_RPC_URL` | `rehearse:op-sepolia` (the forking node) |
+| `OPTIMISM_SEPOLIA_RPC_URL` | `rehearse:op-sepolia` and `twin:up` (the forking node) |
 | `ETHERSCAN_API_KEY` | `ignition deploy --verify`, `hardhat verify` |
 
 They're only resolved when a task needs them; building and testing need none.
@@ -114,6 +114,20 @@ bun run rehearse:op-sepolia -- --account <test account> --admin <its admin>
 ```
 
 The same against a node forking OP Sepolia, using the real factory from `ignition/parameters/optimism_sepolia.json` and impersonating its `EXTENSION_ROLE` holder. `--account`/`--admin` are optional; without them it only publishes from a fresh account it creates on the real factory.
+
+### Local OP Sepolia twin
+
+```shell
+bun run twin:up
+```
+
+This is a local stand-in for production, for developing the SDK and apps end to end ([docs/local-twin-plan.md](docs/local-twin-plan.md)). It starts:
+- a `hardhat node` forking OP Sepolia at a pinned block, under chain id 31337, so nothing signed for it is valid on the real chain;
+- the rollout, applied with the real commands;
+- funded test accounts;
+- a local ERC-4337 bundler (alto) on `:4337`.
+
+It then smoke-tests the publish paths and writes `.twin/twin.json`, with every endpoint, address, schema UID and test key the SDK and apps need. Ctrl-C stops it. It needs `OPTIMISM_SEPOLIA_RPC_URL`.
 
 ### Tasks
 
