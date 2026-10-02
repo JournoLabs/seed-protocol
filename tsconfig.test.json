@@ -1,0 +1,7 @@
+{
+  // Type-checks the config and tests only. scripts/ still holds Hardhat 2 code
+  // until the deploy branch ports it (docs/hardhat3-migration-plan.md, H9);
+  // fold this back into tsconfig.json once that's done.
+  "extends": "./tsconfig.json",
+  "include": ["hardhat.config.ts", "test/**/*", "types/**/*"]
+}
