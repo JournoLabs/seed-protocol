@@ -39,6 +39,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@thirdweb-dev/dynamic-contracts@1.2.5": "patches/@thirdweb-dev%2Fdynamic-contracts@1.2.5.patch",
+  },
   "packages": {
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.10.1", "", {}, "sha512-96Z2IP3mYmF1Xg2cDm8f1gWGf/HUVedQ3FMifV4kG/PQ4yEP51xDtRAEfhVNt5f/uzpNkZHwWQuUcu6D6K+Ekw=="],
 

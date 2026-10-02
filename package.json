@@ -49,5 +49,8 @@
     "merkletreejs": "^0.3.11",
     "nanoid": "^5.0.7",
     "nanoid-dictionary": "^4.3.0"
+  },
+  "patchedDependencies": {
+    "@thirdweb-dev/dynamic-contracts@1.2.5": "patches/@thirdweb-dev%2Fdynamic-contracts@1.2.5.patch"
   }
 }
