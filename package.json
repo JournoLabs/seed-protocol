@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npx hardhat test test/SeedProtocolExecutor.test.js test/ManagedAccountHarness.test.js",
+    "test": "npx hardhat test test/SeedProtocolExecutor.test.js test/ManagedAccountHarness.test.js test/SeedProtocolExtension.access.test.js",
     "test:localhost": "USE_LOCALHOST=1 npx hardhat test test/SeedProtocolExecutor.test.js --network localhost",
     "setup:local": "bun run scripts/setup_local.ts",
 "validate:local": "npx hardhat run scripts/validate_multi_publish_local.ts --network localhost",
