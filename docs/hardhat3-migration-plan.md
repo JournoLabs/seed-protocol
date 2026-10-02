@@ -13,7 +13,7 @@ Why Hardhat 3 and not Foundry:
 | Area | Today |
 |------|-------|
 | Build | Hardhat 2.28. In practice everything compiles with solc 0.8.27, `evmVersion: paris`, optimizer 200 (read from `artifacts/build-info`). `lib/sstore2/` is remapped through a `TASK_COMPILE_GET_REMAPPINGS` subtask override. |
-| Tests | 6 Mocha/Chai suites in CommonJS JS, 93 `it` blocks (`npm test` runs 5; the gas suite runs separately), plus `test/SeedProtocol.ts`, a stale POC suite with 5 tests that isn't run. |
+| Tests | 6 Mocha/Chai suites in CommonJS JS, **116 passing tests** (baseline on `b49f981`; access and crossref generate tests in loops for both extensions). `npm test` runs 5 suites (111); the gas suite (5) runs separately, plus `test/SeedProtocol.ts`, a stale POC suite with 5 tests that isn't run. |
 | Fixtures | `easFixture.js`, `executorEASFixture.js`, `extensionEASFixture.js`, `managedAccountFixture.js`, plus `gas_payloads.ts` and the `multi_publish_*.json` payloads. |
 | Hardhat-specific test APIs | `loadFixture` (~50 call sites), `.to.be.reverted` (11), `revertedWith` (4), `time.increase`, `impersonateAccount`, `setBalance`, `staticCall`, plus `hre.ethers` everywhere. |
 | Plugins | toolbox v4, plus `@nomiclabs/hardhat-ethers` and `@nomiclabs/hardhat-etherscan` (the old v5-era plugins, which conflict with the current ones), `hardhat-upgrades` v3, `hardhat-ethernal`, gas reporter, solidity-coverage, typechain. |
@@ -110,7 +110,7 @@ Hardhat 2 is removed in this branch, so the 18 scripts that import `hardhat` sto
 
 0. **Prereqs.**
    - Pin Node in `.nvmrc`. Use 24 LTS rather than 25 (odd-numbered Node releases aren't LTS, and CI should use LTS).
-   - Save Hardhat 2 output for the parity check: `npx hardhat compile && cp -R artifacts /tmp/hh2-artifacts`.
+   - Save Hardhat 2 output for the parity check: `npx hardhat clean && npx hardhat compile`, then copy `artifacts/` to a directory outside the repo.
 
 1. **Swap Hardhat 2 for Hardhat 3.**
    - Remove all Hardhat 2 packages:
@@ -144,7 +144,7 @@ Hardhat 2 is removed in this branch, so the 18 scripts that import `hardhat` sto
    - Gate: `npx hardhat build` is clean.
 
 3. **Bytecode parity (H4).**
-   - Add `scripts/check_bytecode_parity.ts`, comparing `/tmp/hh2-artifacts` with `artifacts/` (metadata stripped).
+   - Add `scripts/check_bytecode_parity.ts`, comparing the saved Hardhat 2 artifacts with `artifacts/` (metadata stripped).
    - Record the result here. The script can be deleted once green.
 
 4. **Shared fixtures to ESM.**
@@ -195,14 +195,16 @@ Hardhat 2 is removed in this branch, so the 18 scripts that import `hardhat` sto
 
 ## 4. Test mapping checklist
 
-| Suite | `it` count | Hardhat 3 file | Ported | Dropped (reason) |
+The port is done when the Hardhat 3 run reaches the same **116 passing**.
+
+| Suite | Tests (HH2 baseline) | Hardhat 3 file | Ported | Dropped (reason) |
 |-------|-----------:|----------------|-------:|------------------|
 | `ManagedAccountHarness.test.js` | 12 | `ManagedAccountHarness.test.ts` | | |
 | `SeedProtocolExecutor.test.js` | 39 | `SeedProtocolExecutor.test.ts` | | localhost-mode branches (H7) |
-| `SeedProtocolExtension.access.test.js` | 9 | `SeedProtocolExtension.access.test.ts` | | |
-| `SeedProtocolExtension.crossref.test.js` | 10 | `SeedProtocolExtension.crossref.test.ts` | | |
+| `SeedProtocolExtension.access.test.js` | 18 | `SeedProtocolExtension.access.test.ts` | | |
+| `SeedProtocolExtension.crossref.test.js` | 20 | `SeedProtocolExtension.crossref.test.ts` | | |
 | `SeedExecutorRouterExtension.test.js` | 22 | `SeedExecutorRouterExtension.test.ts` | | |
-| `SeedProtocolExtension.gas.test.js` | 1 | `SeedProtocolExtension.gas.test.ts` | | |
+| `SeedProtocolExtension.gas.test.js` | 5 | `SeedProtocolExtension.gas.test.ts` | | |
 | `SeedProtocol.ts` | 5 | — | | stale POC suite (H8) |
 
 ## 5. Risks and things to verify
@@ -226,3 +228,10 @@ Hardhat 2 is removed in this branch, so the 18 scripts that import `hardhat` sto
 - Slither and Aderyn in CI with a triaged baseline.
 - OZ 4.9.5 → 5.x.
 - Optional: move from Mocha + ethers to `node:test` + viem.
+
+## 7. Progress log
+
+- **Step 0 (`.nvmrc`):** Node 24 pinned. Hardhat 2 baseline: 116 passing in the 6 suites. `test/SeedProtocol.ts` fails in its `before all` hook because it calls the extension's removed `initialize` through `deployProxy`; it's deleted in step 5 (H8).
+- **Step 1:** Hardhat 3.18.1 with `hardhat-toolbox-mocha-ethers` 4.0.0. The config loads and type-checks. The in-process network keeps `chainId: 1337`. `allowUnlimitedContractSize` is dropped, since every contract is under 24 KB.
+- **Step 2:** `bun patch` for `@thirdweb-dev/dynamic-contracts@1.2.5` (re-applies on a clean install), and the wrapper `.sol` files are removed. `hardhat build` is clean: 17 files, solc 0.8.27, `paris`. The only warnings are thirdweb's (payable fallback without receive).
+- **Step 3 (bytecode parity):** all 14 deployable artifacts, the 4 production contracts plus EAS, SchemaRegistry, the thirdweb account stack, the mock and the libraries, match Hardhat 2 in both runtime and initcode once metadata is blanked. For the production contracts the raw bytecode has the same length and differs only inside the CBOR metadata blob. Negative control: a build with `runs: 999` makes the script report all 4 production contracts as different and exit 1.
