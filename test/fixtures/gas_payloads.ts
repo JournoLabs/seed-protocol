@@ -207,7 +207,7 @@ export const large: GasPayload = {
           ],
         },
         {
-          schema: "__PROPERTY_SCHEMA_UID__",
+          schema: "__PROPERTY_SCHEMA_UID_2__",
           data: [
             {
               recipient: "0x0000000000000000000000000000000000000000",

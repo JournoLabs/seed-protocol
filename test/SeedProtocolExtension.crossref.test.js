@@ -32,8 +32,23 @@ const VARIANTS = [
  * `count` requests, each creating a seed + version and one `bytes32 ref` property.
  * `refs` is a list of `{ from, to }`: request `from`'s new seed UID goes into request `to`'s ref property.
  */
-function buildBatch(setup, reference, count, refs, { emptyDataAt = [], refSchema } = {}) {
+function buildBatch(
+  setup,
+  reference,
+  count,
+  refs,
+  { emptyDataAt = [], refSchema, duplicateAttestationAt = [], twoEntriesAt = [] } = {},
+) {
   const schema = setup.propertySchemaUid2; // "bytes32 ref"
+  const entry = () => ({
+    recipient: ethers.ZeroAddress,
+    expirationTime: 0n,
+    revocable: true,
+    refUID: ethers.ZeroHash,
+    data: coder.encode(["bytes32"], [ethers.ZeroHash]),
+    value: 0n,
+  });
+  const dataFor = (i) => (emptyDataAt.includes(i) ? [] : twoEntriesAt.includes(i) ? [entry(), entry()] : [entry()]);
   return Array.from({ length: count }, (_, i) => ({
     localId: `request-${i}`,
     seedUid: ethers.ZeroHash,
@@ -42,21 +57,8 @@ function buildBatch(setup, reference, count, refs, { emptyDataAt = [], refSchema
     versionSchemaUid: setup.versionSchemaUid,
     seedIsRevocable: true,
     listOfAttestations: [
-      {
-        schema,
-        data: emptyDataAt.includes(i)
-          ? []
-          : [
-              {
-                recipient: ethers.ZeroAddress,
-                expirationTime: 0n,
-                revocable: true,
-                refUID: ethers.ZeroHash,
-                data: coder.encode(["bytes32"], [ethers.ZeroHash]),
-                value: 0n,
-              },
-            ],
-      },
+      { schema, data: dataFor(i) },
+      ...(duplicateAttestationAt.includes(i) ? [{ schema, data: [entry()] }] : []),
     ],
     propertiesToUpdate: refs.filter((r) => r.from === i).map((r) => reference(r.to, refSchema ?? schema)),
   }));
@@ -141,6 +143,22 @@ for (const { label, fixture, reference } of VARIANTS) {
       expect(targetIndex).to.equal(1n);
       expect(schema).to.equal(setup.propertySchemaUid2);
     });
+
+    for (const [shape, options] of [
+      ["two attestations", { duplicateAttestationAt: [1] }],
+      ["two data entries", { twoEntriesAt: [1] }],
+    ]) {
+      it(`rejects a reference that matches ${shape} with the schema rather than overwrite client data`, async function () {
+        const setup = await loadFixture(fixture);
+        const [targetIndex, schema] = await expectCustomError(
+          publish(setup, buildBatch(setup, reference, 2, [{ from: 0, to: 1 }], options)),
+          setup.account.interface,
+          "AmbiguousPropertyToUpdate",
+        );
+        expect(targetIndex).to.equal(1n);
+        expect(schema).to.equal(setup.propertySchemaUid2);
+      });
+    }
 
     it("rejects a reference to a property schema the target request doesn't contain", async function () {
       const setup = await loadFixture(fixture);
