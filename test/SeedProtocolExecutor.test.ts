@@ -1,10 +1,14 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const path = require("path");
-const fs = require("fs");
-const { executorEASFixture, MODULE_TYPE_EXECUTOR } = require("./fixtures/executorEASFixture");
-const { expectCustomError } = require("./fixtures/managedAccountFixture");
+import { expect } from "chai";
+import { AbiCoder, type ContractTransactionReceipt, Interface, ZeroAddress, ZeroHash, id, parseEther } from "ethers";
+import { network } from "hardhat";
+import { MODULE_TYPE_EXECUTOR, createExecutorEASFixture } from "./fixtures/executorEASFixture.js";
+import { expectCustomError } from "./fixtures/managedAccountFixture.js";
+
+const connection = await network.create();
+const { ethers, networkHelpers } = connection;
+const executorEASFixture = createExecutorEASFixture(connection);
+
+type Setup = Awaited<ReturnType<typeof executorEASFixture>>;
 
 /**
  * End-to-end tests for SeedProtocolExecutor (ERC-7579 Executor Module)
@@ -14,62 +18,31 @@ const { expectCustomError } = require("./fixtures/managedAccountFixture");
  *
  * The critical assertion: EAS sees msg.sender == the Account address,
  * NOT the Executor module address. This proves attestation ownership is correct.
- *
- * Hybrid mode: default uses loadFixture (in-process EAS). Set USE_LOCALHOST=1 to run
- * against a local node using deployments/localhost.json.
  */
 describe("SeedProtocolExecutor", function () {
-  let eas;
-  let executor;
-  let account;
-  let owner;
-  let otherUser;
-  let SEED_SCHEMA_UID;
-  let VERSION_SCHEMA_UID;
-  let PROPERTY_SCHEMA_UID;
-  let useLocalhostManifest;
-
-  const DEPLOYMENTS_DIR = path.join(__dirname, "..", "deployments");
-  const LOCALHOST_JSON = path.join(DEPLOYMENTS_DIR, "localhost.json");
+  let eas: Setup["eas"];
+  let executor: Setup["executor"];
+  let account: Setup["account"];
+  let owner: Setup["owner"];
+  let otherUser: Setup["otherUser"];
+  let SEED_SCHEMA_UID: string;
+  let VERSION_SCHEMA_UID: string;
+  let PROPERTY_SCHEMA_UID: string;
 
   beforeEach(async function () {
-    useLocalhostManifest = process.env.USE_LOCALHOST === "1" && fs.existsSync(LOCALHOST_JSON);
-
-    if (useLocalhostManifest) {
-      const manifest = JSON.parse(fs.readFileSync(LOCALHOST_JSON, "utf-8"));
-      const signers = await ethers.getSigners();
-      owner = signers[0];
-      otherUser = signers.length >= 2 ? signers[1] : new ethers.Wallet(ethers.Wallet.createRandom().privateKey, ethers.provider);
-      const EAS = await ethers.getContractFactory("EAS");
-      eas = EAS.connect(owner).attach(manifest.easAddress);
-      const Executor = await ethers.getContractFactory("SeedProtocolExecutor");
-      executor = Executor.connect(owner).attach(manifest.SeedProtocolExecutor);
-      const Account = await ethers.getContractFactory("MockERC7579Account");
-      account = await Account.deploy(owner.address);
-      await account.waitForDeployment();
-      const initData = ethers.AbiCoder.defaultAbiCoder().encode(
-        ["address"],
-        [manifest.easAddress]
-      );
-      await account.installModule(MODULE_TYPE_EXECUTOR, await executor.getAddress(), initData);
-      SEED_SCHEMA_UID = manifest.seedSchemaUid;
-      VERSION_SCHEMA_UID = manifest.versionSchemaUid;
-      PROPERTY_SCHEMA_UID = manifest.propertySchemaUid;
-    } else {
-      const fixture = await loadFixture(executorEASFixture);
-      eas = fixture.eas;
-      executor = fixture.executor;
-      account = fixture.account;
-      owner = fixture.owner;
-      otherUser = fixture.otherUser;
-      SEED_SCHEMA_UID = fixture.seedSchemaUid;
-      VERSION_SCHEMA_UID = fixture.versionSchemaUid;
-      PROPERTY_SCHEMA_UID = fixture.propertySchemaUid;
-    }
+    const fixture = await networkHelpers.loadFixture(executorEASFixture);
+    eas = fixture.eas;
+    executor = fixture.executor;
+    account = fixture.account;
+    owner = fixture.owner;
+    otherUser = fixture.otherUser;
+    SEED_SCHEMA_UID = fixture.seedSchemaUid;
+    VERSION_SCHEMA_UID = fixture.versionSchemaUid;
+    PROPERTY_SCHEMA_UID = fixture.propertySchemaUid;
   });
 
-  async function callExecutorFromAccount(functionName, args, value = 0n) {
-    const calldata = executor.interface.encodeFunctionData(functionName, args);
+  async function callExecutorFromAccount(functionName: string, args: unknown[], value = 0n) {
+    const calldata = (executor.interface as Interface).encodeFunctionData(functionName, args);
     const tx = await account.execute(
       await executor.getAddress(),
       value,
@@ -77,16 +50,6 @@ describe("SeedProtocolExecutor", function () {
       { value }
     );
     return tx;
-  }
-
-  async function callExecutorFromAccountStatic(functionName, args, value = 0n) {
-    const calldata = executor.interface.encodeFunctionData(functionName, args);
-    return await account.execute.staticCall(
-      await executor.getAddress(),
-      value,
-      calldata,
-      { value }
-    );
   }
 
   /** Run createSeed and return the attestation UID from the CreatedAttestation event. */
@@ -98,7 +61,7 @@ describe("SeedProtocolExecutor", function () {
   }
 
   /** Run createVersion and return the attestation UID from the CreatedAttestation event. */
-  async function createVersionAndGetUid(seedUid) {
+  async function createVersionAndGetUid(seedUid: string) {
     const tx = await callExecutorFromAccount("createVersion", [seedUid, VERSION_SCHEMA_UID]);
     const receipt = await tx.wait();
     const uids = await getCreatedAttestationUids(receipt);
@@ -106,7 +69,7 @@ describe("SeedProtocolExecutor", function () {
   }
 
   /** Run publish and return seedUid and versionUid from CreatedAttestation events (order: seed, version). */
-  async function publishAndGetUids(request) {
+  async function publishAndGetUids(request: { seedUid: string; versionUid: string }) {
     const tx = await callExecutorFromAccount("publish", [request]);
     const receipt = await tx.wait();
     const uids = await getCreatedAttestationUids(receipt);
@@ -117,13 +80,13 @@ describe("SeedProtocolExecutor", function () {
   }
 
   /** Parse CreatedAttestation events from a tx receipt; returns array of attestationUids in order. */
-  async function getCreatedAttestationUids(receipt) {
+  async function getCreatedAttestationUids(receipt: ContractTransactionReceipt | null): Promise<string[]> {
     const addr = await executor.getAddress();
-    const uids = [];
-    for (const log of receipt.logs) {
+    const uids: string[] = [];
+    for (const log of receipt?.logs ?? []) {
       if (log.address.toLowerCase() !== addr.toLowerCase()) continue;
       try {
-        const parsed = executor.interface.parseLog({ topics: log.topics, data: log.data });
+        const parsed = executor.interface.parseLog({ topics: [...log.topics], data: log.data });
         if (parsed && parsed.name === "CreatedAttestation") {
           const result = parsed.args[0];
           uids.push(result.attestationUid ?? result[1]);
@@ -134,13 +97,13 @@ describe("SeedProtocolExecutor", function () {
   }
 
   /** Parse EAS Attested events from a tx receipt; returns array of UIDs in creation order. */
-  async function getEASAttestedUids(receipt) {
+  async function getEASAttestedUids(receipt: ContractTransactionReceipt | null): Promise<string[]> {
     const addr = (await eas.getAddress()).toLowerCase();
-    const uids = [];
-    for (const log of receipt.logs) {
+    const uids: string[] = [];
+    for (const log of receipt?.logs ?? []) {
       if (log.address.toLowerCase() !== addr) continue;
       try {
-        const parsed = eas.interface.parseLog({ topics: log.topics, data: log.data });
+        const parsed = eas.interface.parseLog({ topics: [...log.topics], data: log.data });
         if (parsed && parsed.name === "Attested") uids.push(parsed.args[2]);
       } catch {}
     }
@@ -166,13 +129,13 @@ describe("SeedProtocolExecutor", function () {
     });
 
     it("should revert if installed twice on the same account", async function () {
-      const initData = ethers.AbiCoder.defaultAbiCoder().encode(
+      const initData = AbiCoder.defaultAbiCoder().encode(
         ["address"],
         [await eas.getAddress()]
       );
       await expect(
         account.installModule(MODULE_TYPE_EXECUTOR, await executor.getAddress(), initData)
-      ).to.be.reverted;
+      ).to.be.revert(ethers);
     });
 
     it("should uninstall cleanly", async function () {
@@ -183,7 +146,7 @@ describe("SeedProtocolExecutor", function () {
         "0x"
       );
       expect(await executor.isInitialized(accountAddr)).to.be.false;
-      expect(await executor.getEAS(accountAddr)).to.equal(ethers.ZeroAddress);
+      expect(await executor.getEAS(accountAddr)).to.equal(ZeroAddress);
     });
 
     it("should revert operations after uninstall", async function () {
@@ -194,27 +157,26 @@ describe("SeedProtocolExecutor", function () {
       );
       await expect(
         callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID])
-      ).to.be.reverted;
+      ).to.be.revert(ethers);
     });
 
     it("should revert onInstall with zero EAS address", async function () {
-      const Account = await ethers.getContractFactory("MockERC7579Account");
-      const freshAccount = await Account.deploy(owner.address);
+      const freshAccount = await ethers.deployContract("MockERC7579Account", [owner.address]);
       await freshAccount.waitForDeployment();
-      const badInitData = ethers.AbiCoder.defaultAbiCoder().encode(
+      const badInitData = AbiCoder.defaultAbiCoder().encode(
         ["address"],
-        [ethers.ZeroAddress]
+        [ZeroAddress]
       );
       await expect(
         freshAccount.installModule(MODULE_TYPE_EXECUTOR, await executor.getAddress(), badInitData)
-      ).to.be.reverted;
+      ).to.be.revert(ethers);
     });
   });
 
   describe("createSeed", function () {
     it("should create an attestation and return a non-zero UID", async function () {
       const seedUid = await createSeedAndGetUid();
-      expect(seedUid).to.not.equal(ethers.ZeroHash);
+      expect(seedUid).to.not.equal(ZeroHash);
       const att = await eas.getAttestation(seedUid);
       expect(att.uid).to.equal(seedUid);
     });
@@ -246,7 +208,7 @@ describe("SeedProtocolExecutor", function () {
       );
       const receipt = await tx.wait();
       const executorAddr = await executor.getAddress();
-      const createdAttestationEvents = receipt.logs.filter(
+      const createdAttestationEvents = (receipt?.logs ?? []).filter(
         (log) => log.address.toLowerCase() === executorAddr.toLowerCase()
       );
       expect(createdAttestationEvents.length).to.be.greaterThan(0);
@@ -260,7 +222,7 @@ describe("SeedProtocolExecutor", function () {
   });
 
   describe("createVersion", function () {
-    let seedUid;
+    let seedUid: string;
 
     beforeEach(async function () {
       seedUid = await createSeedAndGetUid();
@@ -290,8 +252,8 @@ describe("SeedProtocolExecutor", function () {
     it("should create both seed and version when both UIDs are zero", async function () {
       const request = {
         localId: "test-local-1",
-        seedUid: ethers.ZeroHash,
-        versionUid: ethers.ZeroHash,
+        seedUid: ZeroHash,
+        versionUid: ZeroHash,
         seedSchemaUid: SEED_SCHEMA_UID,
         versionSchemaUid: VERSION_SCHEMA_UID,
         seedIsRevocable: true,
@@ -299,8 +261,8 @@ describe("SeedProtocolExecutor", function () {
         propertiesToUpdate: [],
       };
       const { seedUid, versionUid } = await publishAndGetUids(request);
-      expect(seedUid).to.not.equal(ethers.ZeroHash);
-      expect(versionUid).to.not.equal(ethers.ZeroHash);
+      expect(seedUid).to.not.equal(ZeroHash);
+      expect(versionUid).to.not.equal(ZeroHash);
       const seedAtt = await eas.getAttestation(seedUid);
       expect(seedAtt.schema).to.equal(SEED_SCHEMA_UID);
       const versionAtt = await eas.getAttestation(versionUid);
@@ -313,7 +275,7 @@ describe("SeedProtocolExecutor", function () {
       const request = {
         localId: "test-local-2",
         seedUid: existingSeedUid,
-        versionUid: ethers.ZeroHash,
+        versionUid: ZeroHash,
         seedSchemaUid: SEED_SCHEMA_UID,
         versionSchemaUid: VERSION_SCHEMA_UID,
         seedIsRevocable: true,
@@ -321,7 +283,7 @@ describe("SeedProtocolExecutor", function () {
         propertiesToUpdate: [],
       };
       const { versionUid } = await publishAndGetUids(request);
-      expect(versionUid).to.not.equal(ethers.ZeroHash);
+      expect(versionUid).to.not.equal(ZeroHash);
       const versionAtt = await eas.getAttestation(versionUid);
       expect(versionAtt.refUID).to.equal(existingSeedUid);
     });
@@ -352,8 +314,8 @@ describe("SeedProtocolExecutor", function () {
       const requests = [
         {
           localId: "request-1",
-          seedUid: ethers.ZeroHash,
-          versionUid: ethers.ZeroHash,
+          seedUid: ZeroHash,
+          versionUid: ZeroHash,
           seedSchemaUid: SEED_SCHEMA_UID,
           versionSchemaUid: VERSION_SCHEMA_UID,
           seedIsRevocable: true,
@@ -362,8 +324,8 @@ describe("SeedProtocolExecutor", function () {
         },
         {
           localId: "request-2",
-          seedUid: ethers.ZeroHash,
-          versionUid: ethers.ZeroHash,
+          seedUid: ZeroHash,
+          versionUid: ZeroHash,
           seedSchemaUid: SEED_SCHEMA_UID,
           versionSchemaUid: VERSION_SCHEMA_UID,
           seedIsRevocable: false,
@@ -379,18 +341,18 @@ describe("SeedProtocolExecutor", function () {
 
     it("should update refUIDs on listOfAttestations to the new versionUid", async function () {
       const propertyAttData = {
-        recipient: ethers.ZeroAddress,
+        recipient: ZeroAddress,
         expirationTime: 0n,
         revocable: true,
-        refUID: ethers.ZeroHash,
-        data: ethers.AbiCoder.defaultAbiCoder().encode(["string"], ["test-property-value"]),
+        refUID: ZeroHash,
+        data: AbiCoder.defaultAbiCoder().encode(["string"], ["test-property-value"]),
         value: 0n,
       };
       const requests = [
         {
           localId: "request-with-props",
-          seedUid: ethers.ZeroHash,
-          versionUid: ethers.ZeroHash,
+          seedUid: ZeroHash,
+          versionUid: ZeroHash,
           seedSchemaUid: SEED_SCHEMA_UID,
           versionSchemaUid: VERSION_SCHEMA_UID,
           seedIsRevocable: true,
@@ -413,18 +375,18 @@ describe("SeedProtocolExecutor", function () {
 
     it("should cross-reference seedUids between requests via propertiesToUpdate", async function () {
       const crossRefPropertyData = {
-        recipient: ethers.ZeroAddress,
+        recipient: ZeroAddress,
         expirationTime: 0n,
         revocable: true,
-        refUID: ethers.ZeroHash,
-        data: ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [ethers.ZeroHash]),
+        refUID: ZeroHash,
+        data: AbiCoder.defaultAbiCoder().encode(["bytes32"], [ZeroHash]),
         value: 0n,
       };
       const requests = [
         {
           localId: "parent-request",
-          seedUid: ethers.ZeroHash,
-          versionUid: ethers.ZeroHash,
+          seedUid: ZeroHash,
+          versionUid: ZeroHash,
           seedSchemaUid: SEED_SCHEMA_UID,
           versionSchemaUid: VERSION_SCHEMA_UID,
           seedIsRevocable: true,
@@ -435,8 +397,8 @@ describe("SeedProtocolExecutor", function () {
         },
         {
           localId: "child-request",
-          seedUid: ethers.ZeroHash,
-          versionUid: ethers.ZeroHash,
+          seedUid: ZeroHash,
+          versionUid: ZeroHash,
           seedSchemaUid: SEED_SCHEMA_UID,
           versionSchemaUid: VERSION_SCHEMA_UID,
           seedIsRevocable: true,
@@ -453,7 +415,7 @@ describe("SeedProtocolExecutor", function () {
       const parentSeedUid = uids[0];
       const childPropertyUid = uids[4];
       const childPropertyAtt = await eas.getAttestation(childPropertyUid);
-      const decodedData = ethers.AbiCoder.defaultAbiCoder().decode(
+      const decodedData = AbiCoder.defaultAbiCoder().decode(
         ["bytes32"],
         childPropertyAtt.data
       );
@@ -464,8 +426,8 @@ describe("SeedProtocolExecutor", function () {
       const requests = [
         {
           localId: "parent",
-          seedUid: ethers.ZeroHash,
-          versionUid: ethers.ZeroHash,
+          seedUid: ZeroHash,
+          versionUid: ZeroHash,
           seedSchemaUid: SEED_SCHEMA_UID,
           versionSchemaUid: VERSION_SCHEMA_UID,
           seedIsRevocable: true,
@@ -477,7 +439,7 @@ describe("SeedProtocolExecutor", function () {
       ];
       const [targetIndex, length] = await expectCustomError(
         callExecutorFromAccount("multiPublish", [requests]),
-        executor.interface,
+        executor.interface as Interface,
         "PublishIndexOutOfBounds"
       );
       expect(targetIndex).to.equal(99n);
@@ -486,18 +448,18 @@ describe("SeedProtocolExecutor", function () {
 
     it("should make the account the attester for all multiAttest attestations", async function () {
       const propertyAttData = {
-        recipient: ethers.ZeroAddress,
+        recipient: ZeroAddress,
         expirationTime: 0n,
         revocable: true,
-        refUID: ethers.ZeroHash,
-        data: ethers.AbiCoder.defaultAbiCoder().encode(["string"], ["value"]),
+        refUID: ZeroHash,
+        data: AbiCoder.defaultAbiCoder().encode(["string"], ["value"]),
         value: 0n,
       };
       const requests = [
         {
           localId: "attester-test",
-          seedUid: ethers.ZeroHash,
-          versionUid: ethers.ZeroHash,
+          seedUid: ZeroHash,
+          versionUid: ZeroHash,
           seedSchemaUid: SEED_SCHEMA_UID,
           versionSchemaUid: VERSION_SCHEMA_UID,
           seedIsRevocable: true,
@@ -522,14 +484,13 @@ describe("SeedProtocolExecutor", function () {
     it("should revert if an EOA calls executor functions directly", async function () {
       await expect(
         executor.connect(owner).createSeed(SEED_SCHEMA_UID)
-      ).to.be.reverted;
+      ).to.be.revert(ethers);
     });
 
     it("should revert if a non-owner tries to install modules on the account", async function () {
-      const Account = await ethers.getContractFactory("MockERC7579Account");
-      const freshAccount = await Account.deploy(owner.address);
+      const freshAccount = await ethers.deployContract("MockERC7579Account", [owner.address]);
       await freshAccount.waitForDeployment();
-      const initData = ethers.AbiCoder.defaultAbiCoder().encode(
+      const initData = AbiCoder.defaultAbiCoder().encode(
         ["address"],
         [await eas.getAddress()]
       );
@@ -539,7 +500,7 @@ describe("SeedProtocolExecutor", function () {
           await executor.getAddress(),
           initData
         )
-      ).to.be.reverted;
+      ).to.be.revert(ethers);
     });
 
     it("should revert if a non-owner tries to execute through the account", async function () {
@@ -553,58 +514,37 @@ describe("SeedProtocolExecutor", function () {
           0,
           calldata
         )
-      ).to.be.reverted;
+      ).to.be.revert(ethers);
     });
   });
 
   describe("Multi-Account Isolation", function () {
-    let account2;
-    let eas2Address;
+    let account2: Setup["account"];
 
     beforeEach(async function () {
-      if (useLocalhostManifest) {
-        const Account2 = await ethers.getContractFactory("MockERC7579Account");
-        account2 = await Account2.deploy(owner.address);
-        await account2.waitForDeployment();
-        const manifest = JSON.parse(fs.readFileSync(LOCALHOST_JSON, "utf-8"));
-        const initData = ethers.AbiCoder.defaultAbiCoder().encode(
-          ["address"],
-          [manifest.easAddress]
-        );
-        await account2.installModule(MODULE_TYPE_EXECUTOR, await executor.getAddress(), initData);
-        eas2Address = manifest.easAddress;
-      } else {
-        const [o] = await ethers.getSigners();
-        const SchemaRegistry = await ethers.getContractFactory("SchemaRegistry");
-        const schemaRegistry2 = await SchemaRegistry.deploy();
-        await schemaRegistry2.waitForDeployment();
-        const EAS = await ethers.getContractFactory("EAS");
-        const eas2 = await EAS.deploy(await schemaRegistry2.getAddress());
-        await eas2.waitForDeployment();
-        eas2Address = await eas2.getAddress();
-        await schemaRegistry2.register("bytes32 post", ethers.ZeroAddress, true);
-        await schemaRegistry2.register("bytes32 version", ethers.ZeroAddress, true);
-        await schemaRegistry2.register("string value", ethers.ZeroAddress, true);
-        const Account2 = await ethers.getContractFactory("MockERC7579Account");
-        account2 = await Account2.deploy(o.address);
-        await account2.waitForDeployment();
-        const initData = ethers.AbiCoder.defaultAbiCoder().encode(
-          ["address"],
-          [eas2Address]
-        );
-        await account2.installModule(MODULE_TYPE_EXECUTOR, await executor.getAddress(), initData);
-      }
+      const [o] = await ethers.getSigners();
+      const schemaRegistry2 = await ethers.deployContract("SchemaRegistry");
+      await schemaRegistry2.waitForDeployment();
+      const eas2 = await ethers.deployContract("EAS", [await schemaRegistry2.getAddress()]);
+      await eas2.waitForDeployment();
+      const eas2Address = await eas2.getAddress();
+      await schemaRegistry2.register("bytes32 post", ZeroAddress, true);
+      await schemaRegistry2.register("bytes32 version", ZeroAddress, true);
+      await schemaRegistry2.register("string value", ZeroAddress, true);
+      account2 = await ethers.deployContract("MockERC7579Account", [o.address]);
+      await account2.waitForDeployment();
+      const initData = AbiCoder.defaultAbiCoder().encode(
+        ["address"],
+        [eas2Address]
+      );
+      await account2.installModule(MODULE_TYPE_EXECUTOR, await executor.getAddress(), initData);
     });
 
-    it("should track separate EAS addresses per account (or same when using manifest)", async function () {
+    it("should track separate EAS addresses per account", async function () {
       const eas1 = await executor.getEAS(await account.getAddress());
       const eas2 = await executor.getEAS(await account2.getAddress());
-      if (useLocalhostManifest) {
-        expect(eas1).to.equal(eas2);
-      } else {
-        expect(eas1).to.not.equal(eas2);
-        expect(eas1).to.equal(await eas.getAddress());
-      }
+      expect(eas1).to.not.equal(eas2);
+      expect(eas1).to.equal(await eas.getAddress());
     });
 
     it("should not allow one account to affect another's state", async function () {
@@ -618,8 +558,8 @@ describe("SeedProtocolExecutor", function () {
   function requestWithProperty({ revocable = true } = {}) {
     return {
       localId: "with-property",
-      seedUid: ethers.ZeroHash,
-      versionUid: ethers.ZeroHash,
+      seedUid: ZeroHash,
+      versionUid: ZeroHash,
       seedSchemaUid: SEED_SCHEMA_UID,
       versionSchemaUid: VERSION_SCHEMA_UID,
       seedIsRevocable: revocable,
@@ -628,17 +568,17 @@ describe("SeedProtocolExecutor", function () {
           schema: PROPERTY_SCHEMA_UID,
           data: [
             {
-              recipient: ethers.ZeroAddress,
+              recipient: ZeroAddress,
               expirationTime: 0n,
               revocable,
-              refUID: ethers.ZeroHash,
-              data: ethers.AbiCoder.defaultAbiCoder().encode(["string"], ["value"]),
+              refUID: ZeroHash,
+              data: AbiCoder.defaultAbiCoder().encode(["string"], ["value"]),
               value: 0n,
             },
           ],
         },
       ],
-      propertiesToUpdate: [],
+      propertiesToUpdate: [] as { publishIndex: number; propertySchemaUid: string }[],
     };
   }
 
@@ -646,7 +586,7 @@ describe("SeedProtocolExecutor", function () {
     it("forwards msg.value to EAS once and keeps none of it in the module", async function () {
       const executorAddr = await executor.getAddress();
       const accountAddr = await account.getAddress();
-      const value = ethers.parseEther("1");
+      const value = parseEther("1");
       const accountBefore = await ethers.provider.getBalance(accountAddr);
 
       await (await callExecutorFromAccount("multiPublish", [[requestWithProperty(), requestWithProperty()]], value)).wait();
@@ -658,18 +598,18 @@ describe("SeedProtocolExecutor", function () {
 
     it("rejects value when no attestation batch would consume it", async function () {
       const request = { ...requestWithProperty(), listOfAttestations: [] };
-      const value = ethers.parseEther("1");
+      const value = parseEther("1");
       const [unused] = await expectCustomError(
         callExecutorFromAccount("multiPublish", [[request]], value),
-        executor.interface,
+        executor.interface as Interface,
         "UnusedValue",
       );
       expect(unused).to.equal(value);
     });
 
     it("does not accept value on createSeed, createVersion or publish", async function () {
-      await expect(callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID], 1n)).to.be.reverted;
-      await expect(callExecutorFromAccount("publish", [requestWithProperty()], 1n)).to.be.reverted;
+      await expect(callExecutorFromAccount("createSeed", [SEED_SCHEMA_UID], 1n)).to.be.revert(ethers);
+      await expect(callExecutorFromAccount("publish", [requestWithProperty()], 1n)).to.be.revert(ethers);
     });
   });
 
@@ -679,7 +619,7 @@ describe("SeedProtocolExecutor", function () {
       const accountAddr = await account.getAddress();
       const [who] = await expectCustomError(
         callExecutorFromAccount("onUninstall", ["0x"]),
-        executor.interface,
+        executor.interface as Interface,
         "StillInstalledOnAccount",
       );
       expect(who).to.equal(accountAddr);
@@ -688,24 +628,23 @@ describe("SeedProtocolExecutor", function () {
     });
 
     it("ignores onInstall sent through an account that hasn't installed the module", async function () {
-      const Account = await ethers.getContractFactory("MockERC7579Account");
-      const freshAccount = await Account.deploy(owner.address);
+      const freshAccount = await ethers.deployContract("MockERC7579Account", [owner.address]);
       await freshAccount.waitForDeployment();
-      const initData = ethers.AbiCoder.defaultAbiCoder().encode(["address"], [otherUser.address]);
+      const initData = AbiCoder.defaultAbiCoder().encode(["address"], [otherUser.address]);
       const calldata = executor.interface.encodeFunctionData("onInstall", [initData]);
 
       await expectCustomError(
         freshAccount.execute(await executor.getAddress(), 0n, calldata),
-        executor.interface,
+        executor.interface as Interface,
         "NotInstalledOnAccount",
       );
       expect(await executor.isInitialized(await freshAccount.getAddress())).to.be.false;
     });
 
     it("rejects onInstall/onUninstall from an EOA", async function () {
-      const initData = ethers.AbiCoder.defaultAbiCoder().encode(["address"], [await eas.getAddress()]);
-      await expect(executor.connect(otherUser).onInstall(initData)).to.be.reverted;
-      await expect(executor.connect(otherUser).onUninstall("0x")).to.be.reverted;
+      const initData = AbiCoder.defaultAbiCoder().encode(["address"], [await eas.getAddress()]);
+      await expect(executor.connect(otherUser).onInstall(initData)).to.be.revert(ethers);
+      await expect(executor.connect(otherUser).onUninstall("0x")).to.be.revert(ethers);
     });
   });
 
@@ -747,7 +686,7 @@ describe("SeedProtocolExecutor", function () {
       };
       const [requestIndex, targetIndex] = await expectCustomError(
         callExecutorFromAccount("multiPublish", [[target, referrer]]),
-        executor.interface,
+        executor.interface as Interface,
         "PublishTargetAlreadyAttested",
       );
       expect(requestIndex).to.equal(1n);
@@ -755,7 +694,7 @@ describe("SeedProtocolExecutor", function () {
     });
 
     it("rejects a reference to a property schema the target request doesn't contain", async function () {
-      const missingSchema = ethers.id("not-in-the-batch");
+      const missingSchema = id("not-in-the-batch");
       const referrer = {
         ...requestWithProperty(),
         localId: "referrer",
@@ -763,7 +702,7 @@ describe("SeedProtocolExecutor", function () {
       };
       const [requestIndex, targetIndex, schema] = await expectCustomError(
         callExecutorFromAccount("multiPublish", [[referrer, requestWithProperty()]]),
-        executor.interface,
+        executor.interface as Interface,
         "PropertyToUpdateNotFound",
       );
       expect(requestIndex).to.equal(0n);
@@ -777,8 +716,9 @@ describe("SeedProtocolExecutor", function () {
       // Anything that can drive the module through the account, including a delegate's
       // session key, would be able to revoke all of the account's attestations: the
       // account can't tell which signer is behind a call. Owners revoke via execute(EAS, ...).
-      expect(executor.interface.getFunction("revoke")).to.equal(null);
-      expect(executor.interface.getFunction("multiRevoke")).to.equal(null);
+      const iface = executor.interface as Interface;
+      expect(iface.getFunction("revoke")).to.equal(null);
+      expect(iface.getFunction("multiRevoke")).to.equal(null);
     });
   });
 });
