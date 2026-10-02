@@ -1,14 +1,15 @@
 {
   "compilerOptions": {
-    "target": "esNext",
-    "moduleResolution": "node",
+    "lib": ["es2023"],
+    "module": "node16",
+    "moduleResolution": "node16",
+    "target": "es2022",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["mocha", "node"],
-    "typeRoots": ["scripts/types", "node_modules/@types", "typechain-types"],
+    "typeRoots": ["scripts/types", "node_modules/@types"]
   },
-  "include": ["scripts/**/*", "test/**/*", "typechain-types/**/*"]
+  "include": ["hardhat.config.ts", "scripts/**/*", "test/**/*", "types/**/*"]
 }
