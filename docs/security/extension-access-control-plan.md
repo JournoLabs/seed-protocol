@@ -68,6 +68,23 @@ The trust model matches D2: a session key that can reach the executor can attest
 - **`msg.value`**: received exactly once. It's forwarded via `executeFromExecutor{value: …}` on the first EAS call that needs it, and 0 on the rest. Internal `_createSeed`/`_createVersion` take an explicit value. The module never holds ETH: it asserts its balance is unchanged at the end, and has no `receive`.
 - **Revocation**: add `revoke(RevocationRequest)` and `multiRevoke(MultiRevocationRequest[])`, routed through the same account → EAS path. EAS itself enforces that only the attester can revoke.
 
+### D7: Delegated publishing (session keys) is a hard requirement
+Users must be able to let a third party publish as their account, and revoke that at any time. This is thirdweb's native session-key mechanism, and the fix keeps it:
+
+- **Grant:** the admin signs a `SignerPermissionRequest` for the delegate with `approvedTargets = [account]`, a time window, and a native-token limit. Once the executor path ships, `approvedTargets = [executor]` also works.
+- **Publish:** the delegate signs a UserOp calling `execute(account, 0, multiPublish(...))`. Under the D2 policy this is the allowed `address(this)` caller.
+- **Revoke:** the admin signs a new request with no targets, or lets the window expire. The EntryPoint rejects the delegate's UserOps with `AA24`.
+
+`test/ManagedAccountHarness.test.js` pins all of this down against the real account stack, and it must stay green through every step.
+
+Known scoping limits of an account-targeted session key:
+- It can call anything that trusts self-calls. Today that's `multiPublish`, `setEas` (removed by D1) and thirdweb's `setContractURI` (metadata only). Any future routed function must not trust `address(this)` for admin-level actions.
+- It can attest **any schema with any data**, including non-revocable attestations, as the account. Revoking the key stops future publishes only. Optional hardening (decision needed):
+  - (a) force every attestation created via `multiPublish` to be revocable, so the owner can always clean up after a delegate;
+  - (b) a per-account schema allowlist the admin manages.
+
+Executor-path note for step 8: a session key that targets the executor can call `executor.onUninstall()` with the account as `msg.sender`, which breaks publishing until it's reinstalled. Install and uninstall must only take effect when initiated by the router extension's admin-only functions.
+
 ## 3. Work breakdown (one commit each)
 
 1. **Test harness for real thirdweb accounts.** Add `contracts/test/ThirdwebHarness.sol` importing `EntryPoint`, `ManagedAccountFactory` and `ManagedAccount`. Add `test/fixtures/managedAccountFixture.js`, which:
