@@ -57,8 +57,8 @@ The changes needed (§4) are making existing settings work end to end: chain, RP
   4. Starts the bundler: alto, a dev dependency, on `:4337`.
   5. Runs the smoke tests: `seed:publish-smoke` (direct and `handleOps` paths), then a UserOp **through the bundler** that deploys alice's ManagedAccount and publishes through it.
   6. Writes `.twin/twin.json` for the SDK and apps: chain id, RPC and bundler URLs, EntryPoint, every contract address, base schema UIDs, and the accounts with their keys.
-- **Not started by `twin:up`:**
-  - the EAS indexer. `../eas-indexing-service` hardcodes its chain configs in `utils.ts`, so it needs a 31337 entry with the twin's EAS/registry addresses, `rpcProvider: http://host.docker.internal:8545` and `contractStartBlock` = fork block + 1;
+- **Not started by `twin:up` yet:**
+  - the EAS indexer (§9 has the design, proven by hand);
   - the seed gateway: run `../seed-protocol-server` alongside.
 
 ## 4. Changes outside this repo
@@ -137,3 +137,41 @@ A local-network mode driven by env vars (chain id, RPC, bundler, indexer, Arweav
 - **`eth_call` from an unfunded address fails on the twin**, because an OP-type node charges the L1 data fee up front. Callers that simulate from fresh addresses need a balance or a state override. `seed:verify-live` has this fix; `simulateCallFromAccount` in the SDK may need it too.
 
 Scripts used: kept out of the repo (scratch); `twin:up` will reimplement them properly.
+
+## 9. EAS indexer: the official one, pinned and seeded (2026-10-02)
+
+`../eas-indexing-service` is JournoDAO's experimental fork, last synced with upstream in 2024. The twin uses the **official** indexer, [ethereum-attestation-service/eas-indexing-service](https://github.com/ethereum-attestation-service/eas-indexing-service), which is the same software as easscan, so its GraphQL is what the SDK already queries. It was proven by hand against a running twin (scratch files; not in the repo yet).
+
+### What upstream offers, and what it lacks for the twin
+- **Chain selection.** Chains are a hardcoded array (`chainConfigs.ts`), selected by `CHAIN_ID`. There's no way to define a chain from the environment, and no published Docker image; you build it yourself.
+- **Upstream's build is broken today.** It has no lockfile, so dependencies float, and a transitive dependency (`brace-expansion@5`) now needs Node 20+, while upstream's Dockerfile uses Node 18.
+- **Resuming.** The indexer resumes from a block counter in its Postgres (`ServiceStat.latestAttestationBlockNum`). Since the twin restarts from the same fork block on every `up`, the indexer's database must be wiped each time.
+- **Polling.** Its event listener polls the RPC every few seconds, so attestations appear within seconds. `POLLING_INTERVAL` (default 60 s) is only the fallback.
+
+### The setup
+1. **Image.** Upstream cloned at a pinned commit (`9490bfa`, 2026-03-16) on `node:20-alpine`, plus a one-line overlay. The overlay appends to `chainConfigs.ts` an `EAS_CHAIN_CONFIGS.push(...)` of one config parsed from `EAS_CUSTOM_CHAIN` (JSON). Upstream's files are otherwise untouched. The build takes about 40 s.
+2. **Twin chain config.** Chain id 31337, EAS `0x4200…21`, registry `0x4200…20`, `rpcProvider: http://host.docker.internal:8545`, `contractStartBlock`: fork block + 1, `POLLING_INTERVAL=5000`.
+3. **Seed the pre-fork data from easscan.** This step is required.
+   - Starting at the fork block alone **breaks**. The first Seed publish uses `bytes32 version`, which was registered before the fork, so the attestation insert fails a foreign-key check (`Attestation_schemaId_fkey`). The indexer only advances after a batch succeeds, so it retries the same batch forever.
+   - The fix is to copy OP Sepolia's data up to the fork block's timestamp from `optimism-sepolia.easscan.org/graphql`:
+     - all 792 schemas and 172 schema names, in about 1 s;
+     - optionally all on-chain attestations (48,827 at block 49,590,000), in about 40 s.
+   - Rows go in with `json_populate_recordset … ON CONFLICT DO NOTHING`. Attestations revoked after the fork are marked unrevoked.
+   - Pages must be ordered by `(time, id)`; ordering by `time` alone overlapped pages and lost 128 rows.
+4. **Result.** The indexer got past the stuck batch, indexed the twin's 9 smoke attestations, and kept up block by block. The seeded attestations match easscan field for field, and schema-name lookups (the SDK's `getSchemaUidForModel` path) work.
+
+### To build into `twin:up` (this repo)
+- `infra/eas-indexer/`: the Dockerfile, the overlay, a compose file (Postgres + indexer on `:4000`), and a **vendored `yarn.lock`** generated once, so the build is reproducible.
+- `twin:up` then:
+  1. runs `docker compose down -v` (fresh database) and starts Postgres and the indexer, with `EAS_CUSTOM_CHAIN` built from `twin.json`;
+  2. seeds from easscan. Schemas and names always; attestations by default too (`--no-attestation-seed` to skip);
+  3. waits for GraphQL, then checks that the smoke attestations are indexed;
+  4. adds `easGraphqlUrl: http://localhost:4000/graphql` to `twin.json`.
+- Ctrl-C stops the compose project too.
+- Seeding needs internet access (easscan), like the fork itself.
+
+### Worth offering upstream
+These would let the overlay go away:
+- an env-defined chain config;
+- a lockfile and Node 20 in the Dockerfile;
+- optionally, fetching an unknown schema from the registry instead of failing the batch, which helps anyone indexing from a later start block.
