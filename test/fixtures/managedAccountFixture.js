@@ -21,6 +21,15 @@ const SEED_EXTENSION_LEGACY = {
   functions: ["multiPublish", "getEas"],
 };
 
+/** Selectors the executor router extension is registered with on the factory. */
+const EXECUTOR_ROUTER_FUNCTIONS = [
+  "installSeedExecutor",
+  "uninstallSeedExecutor",
+  "isModuleInstalled",
+  "getSeedExecutor",
+  "executeFromExecutor",
+];
+
 /** SeedProtocolExtensionV2 (uint publishIndex cross-references), registered the same way. */
 const SEED_EXTENSION_V2 = {
   name: "SeedProtocolExtensionV2",
@@ -286,7 +295,7 @@ function buildPublishRequests(setup, { revocable = true, propertyValue = "hello"
  *   stranger     – unrelated address with no permissions
  *   bundler      – submits UserOperations
  */
-async function deployManagedAccountStack({ seedExtension = SEED_EXTENSION_LEGACY } = {}) {
+async function deployManagedAccountStack({ seedExtension = SEED_EXTENSION_LEGACY, withExecutor = false } = {}) {
   const [factoryAdmin, accountAdmin, delegate, stranger, bundler] = await ethers.getSigners();
 
   const easSetup = await deployEASWithSchemas();
@@ -322,13 +331,43 @@ async function deployManagedAccountStack({ seedExtension = SEED_EXTENSION_LEGACY
       )
   ).wait();
 
+  // Optionally: the ERC-7579 executor module plus the Router extension that lets accounts use it.
+  let executor = null;
+  let executorRouterImpl = null;
+  let ExecutorRouter = null;
+  if (withExecutor) {
+    executor = await (await ethers.getContractFactory("SeedProtocolExecutor")).deploy();
+    await executor.waitForDeployment();
+
+    ExecutorRouter = await ethers.getContractFactory("SeedExecutorRouterExtension");
+    executorRouterImpl = await ExecutorRouter.deploy(easAddress, await executor.getAddress());
+    await executorRouterImpl.waitForDeployment();
+    await (
+      await factory
+        .connect(factoryAdmin)
+        .addExtension(
+          buildExtension(
+            "SeedExecutorRouterExtension",
+            await executorRouterImpl.getAddress(),
+            ExecutorRouter.interface,
+            EXECUTOR_ROUTER_FUNCTIONS,
+          ),
+        )
+    ).wait();
+  }
+
   // Create the account and fund it so it can prefund UserOperations.
   const accountAddress = await factory.createAccount.staticCall(accountAdmin.address, "0x");
   await (await factory.createAccount(accountAdmin.address, "0x")).wait();
   await (await factoryAdmin.sendTransaction({ to: accountAddress, value: ethers.parseEther("10") })).wait();
 
   const ManagedAccount = await ethers.getContractFactory("ManagedAccount");
-  const accountInterface = mergeInterfaces(ManagedAccount.interface, AccountExtension.interface, SeedExtension.interface);
+  const accountInterface = mergeInterfaces(
+    ManagedAccount.interface,
+    AccountExtension.interface,
+    SeedExtension.interface,
+    ...(ExecutorRouter ? [ExecutorRouter.interface] : []),
+  );
   const account = new ethers.Contract(accountAddress, accountInterface, accountAdmin);
 
   return {
@@ -338,6 +377,8 @@ async function deployManagedAccountStack({ seedExtension = SEED_EXTENSION_LEGACY
     factory,
     accountExtension,
     seedImpl,
+    executor,
+    executorRouterImpl,
     account,
     accountAddress,
     factoryAdmin,
@@ -358,12 +399,19 @@ async function managedAccountV2Fixture() {
   return deployManagedAccountStack({ seedExtension: SEED_EXTENSION_V2 });
 }
 
+/** Legacy stack plus SeedProtocolExecutor and its Router extension (not yet installed on the account). */
+async function managedAccountExecutorFixture() {
+  return deployManagedAccountStack({ withExecutor: true });
+}
+
 module.exports = {
   SEED_EXTENSION_LEGACY,
   SEED_EXTENSION_V2,
   deployManagedAccountStack,
   managedAccountFixture,
   managedAccountV2Fixture,
+  managedAccountExecutorFixture,
+  EXECUTOR_ROUTER_FUNCTIONS,
   buildExtension,
   mergeInterfaces,
   setSignerPermissions,

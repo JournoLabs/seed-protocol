@@ -47,14 +47,15 @@ This also fixes F3: no per-account initialization step. Changing EAS means deplo
 `SeedProtocolExtension` (legacy, string `publishLocalId`) and `SeedProtocolExtensionV2` (uint `publishIndex`) only implement their own `multiPublish` cross-reference logic. Both get the fix and can't drift apart.
 
 ### D5: Executor path via a dedicated Router extension
-`SeedExecutorRouterExtension` is added to the ManagedAccountFactory. It exposes:
+`SeedExecutorRouterExtension` is added to the ManagedAccountFactory. **Both the executor and EAS are constructor immutables**, so the factory admin decides which module is trusted. Account admins only opt in or out, and can't be talked into installing a look-alike executor. (This replaces the original `installSeedExecutor(address module)` design.) It exposes:
 
 | Function | Who may call | Behavior |
 |----------|--------------|----------|
-| `installSeedExecutor(address module)` | admin or EntryPoint only (**not** self, per D1) | stores `module` in namespaced account storage, then calls `module.onInstall(abi.encode(EAS))` |
-| `uninstallSeedExecutor()` | admin or EntryPoint only | calls `onUninstall`, clears storage |
-| `getSeedExecutor()` | anyone (view) | returns the installed module |
-| `executeFromExecutor(ModeCode, bytes)` | installed module only | see constraints below |
+| `installSeedExecutor()` | admin or EntryPoint only (**not** self, per D1) | marks installed in namespaced account storage, *then* calls `executor.onInstall(abi.encode(EAS))` |
+| `uninstallSeedExecutor()` | admin or EntryPoint only | marks uninstalled, *then* calls `executor.onUninstall("")` |
+| `isModuleInstalled(uint256, address, bytes)` | anyone (view) | true only for (executor type, the pinned executor, installed) |
+| `getSeedExecutor()` | anyone (view) | returns the pinned executor and EAS |
+| `executeFromExecutor(ModeCode, bytes)` | installed executor only | see constraints below |
 
 Constraints on `executeFromExecutor`:
 - **single call type** and default exec type only;
@@ -127,7 +128,7 @@ So any revoke function a delegate can reach could revoke **all** of the account'
    - no `revoke`/`multiRevoke` (D8).
 
    `MockERC7579Account` already forwarded value correctly, so it needed no change.
-8. **`SeedExecutorRouterExtension` (F7)**, with tests:
+8. **`SeedExecutorRouterExtension` (F7), done** (`test/SeedExecutorRouterExtension.test.js`; the guards were mutation-checked), with tests:
    - only the installed module can call `executeFromExecutor`;
    - wrong target, disallowed selector, batch mode and value mismatch each revert;
    - install/uninstall work for admin and EntryPoint only;
