@@ -6,28 +6,32 @@
  *   - a third party holding a session key can publish as the account
  *   - the admin can revoke that session key at any time
  */
-const { expect } = require("chai");
-const { loadFixture, time } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {
-  managedAccountFixture,
-  grantSessionKey,
-  revokeSessionKey,
-  sendUserOp,
-  expectUserOpRejected,
+import { expect } from "chai";
+import type { ContractTransactionReceipt } from "ethers";
+import { network } from "hardhat";
+import {
+  type ManagedAccountSetup,
   attestedEvents,
   buildPublishRequests,
-} = require("./fixtures/managedAccountFixture");
+  createManagedAccountFixtures,
+  expectUserOpRejected,
+} from "./fixtures/managedAccountFixture.js";
+
+const connection = await network.create();
+const { networkHelpers } = connection;
+const { loadFixture, time } = networkHelpers;
+const { managedAccountFixture, grantSessionKey, revokeSessionKey, sendUserOp } = createManagedAccountFixtures(connection);
 
 async function readyFixture() {
   return loadFixture(managedAccountFixture);
 }
 
-function multiPublishCallData(setup) {
+function multiPublishCallData(setup: ManagedAccountSetup) {
   return setup.account.interface.encodeFunctionData("multiPublish", [buildPublishRequests(setup)]);
 }
 
 /** `account.execute(account, 0, multiPublish(...))` – the self-call path session keys use. */
-function executeSelfMultiPublishCallData(setup) {
+function executeSelfMultiPublishCallData(setup: ManagedAccountSetup) {
   return setup.account.interface.encodeFunctionData("execute", [
     setup.accountAddress,
     0n,
@@ -35,7 +39,7 @@ function executeSelfMultiPublishCallData(setup) {
   ]);
 }
 
-function expectAllAttestedBy(setup, receipt, expectedCount) {
+function expectAllAttestedBy(setup: ManagedAccountSetup, receipt: ContractTransactionReceipt | null, expectedCount: number) {
   const attested = attestedEvents(setup.eas, receipt);
   expect(attested).to.have.length(expectedCount);
   for (const event of attested) {
@@ -47,7 +51,7 @@ describe("ManagedAccount harness", function () {
   describe("wiring", function () {
     it("routes Seed selectors on the factory to the extension implementation", async function () {
       const setup = await loadFixture(managedAccountFixture);
-      const selector = setup.account.interface.getFunction("multiPublish").selector;
+      const selector = setup.account.interface.getFunction("multiPublish")!.selector;
       expect(await setup.factory.getImplementationForFunction(selector)).to.equal(await setup.seedImpl.getAddress());
     });
 
