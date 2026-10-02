@@ -4,7 +4,6 @@ import {
   Contract,
   type ContractRunner,
   type ContractTransactionReceipt,
-  type Fragment,
   Interface,
   type Result,
   ZeroAddress,
@@ -15,6 +14,12 @@ import {
   parseUnits,
   randomBytes,
 } from "ethers";
+import {
+  EXECUTOR_ROUTER_FUNCTIONS,
+  SEED_EXTENSION_FUNCTIONS,
+  buildExtension,
+  mergeInterfaces,
+} from "../../scripts/lib/extensions.js";
 import { deployEASWithSchemas } from "./easFixture.js";
 
 /**
@@ -54,24 +59,15 @@ export const SEED_EXTENSION_LEGACY: SeedExtensionConfig = {
   name: "SeedProtocolExtension",
   contractName: "SeedProtocolExtension",
   constructorArgs: ({ easAddress }) => [easAddress],
-  functions: ["multiPublish", "getEas"],
+  functions: SEED_EXTENSION_FUNCTIONS,
 };
-
-/** Selectors the executor router extension is registered with on the factory. */
-export const EXECUTOR_ROUTER_FUNCTIONS = [
-  "installSeedExecutor",
-  "uninstallSeedExecutor",
-  "isModuleInstalled",
-  "getSeedExecutor",
-  "executeFromExecutor",
-];
 
 /** SeedProtocolExtensionV2 (uint publishIndex cross-references), registered the same way. */
 export const SEED_EXTENSION_V2: SeedExtensionConfig = {
   name: "SeedProtocolExtensionV2",
   contractName: "SeedProtocolExtensionV2",
   constructorArgs: ({ easAddress }) => [easAddress],
-  functions: ["multiPublish", "getEas"],
+  functions: SEED_EXTENSION_FUNCTIONS,
 };
 
 const SIGNER_PERMISSION_TYPES = {
@@ -104,40 +100,9 @@ export interface SignerPermissionRequest {
 // Router helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Builds the `Extension` struct the thirdweb Router expects. Selectors are derived
- * from the canonical signature, which is what BaseRouter validates against.
- */
-export function buildExtension(name: string, implementation: string, iface: Interface, functionNames: string[]) {
-  return {
-    metadata: { name, metadataURI: "", implementation },
-    functions: functionNames.map((fnName) => {
-      const fragment = iface.getFunction(fnName);
-      if (!fragment) throw new Error(`${name}: no function ${fnName}`);
-      return { functionSelector: fragment.selector, functionSignature: fragment.format("sighash") };
-    }),
-  };
-}
-
 /** All function names in an interface (used to route the whole AccountExtension). */
 function allFunctionNames(iface: Interface): string[] {
   return iface.fragments.filter((f) => f.type === "function").map((f) => f.format("sighash"));
-}
-
-/** Merges ABIs into one Interface, dropping duplicates (account + routed extensions share some). */
-export function mergeInterfaces(...ifaces: Interface[]): Interface {
-  const seen = new Set<string>();
-  const fragments: Fragment[] = [];
-  for (const iface of ifaces) {
-    for (const fragment of iface.fragments) {
-      if (!["function", "event", "error"].includes(fragment.type)) continue;
-      const key = `${fragment.type}:${fragment.format("sighash")}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      fragments.push(fragment);
-    }
-  }
-  return new Interface(fragments);
 }
 
 // ---------------------------------------------------------------------------
