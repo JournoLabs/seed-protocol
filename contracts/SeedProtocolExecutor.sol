@@ -324,6 +324,35 @@ contract SeedProtocolExecutor is IERC7579Module {
         return result;
     }
 
+    /**
+     * @notice Revokes an attestation made by the calling smart account.
+     * @dev EAS only lets the original attester revoke, so this can only touch the
+     *      account's own attestations. `msg.value` is passed through to EAS for
+     *      payable resolvers; EAS refunds any excess to the account.
+     *      Anything able to drive this module through the account (including a session
+     *      key allowed to target it) can revoke the account's attestations.
+     * @param request The EAS revocation request
+     */
+    function revoke(RevocationRequest memory request) external payable {
+        address account = msg.sender;
+        _executeOnAccount(account, _getEASOrRevert(account), msg.value, abi.encodeCall(IEAS.revoke, (request)));
+    }
+
+    /**
+     * @notice Revokes multiple attestations made by the calling smart account, across schemas.
+     * @dev Same rules as `revoke`.
+     * @param multiRequests The EAS multi-revocation requests
+     */
+    function multiRevoke(MultiRevocationRequest[] memory multiRequests) external payable {
+        address account = msg.sender;
+        _executeOnAccount(
+            account,
+            _getEASOrRevert(account),
+            msg.value,
+            abi.encodeCall(IEAS.multiRevoke, (multiRequests))
+        );
+    }
+
     // ========================================================================
     // Internal Helpers
     // ========================================================================

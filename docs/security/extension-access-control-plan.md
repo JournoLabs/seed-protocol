@@ -83,7 +83,9 @@ Known scoping limits of an account-targeted session key:
   - **Decided (a):** every attestation created through `multiPublish` (seed, version and properties) is forced revocable, so the owner can always revoke what a delegate published. The `seedIsRevocable` and per-attestation `revocable` request fields are ignored. This assumes every Seed/property schema is registered as revocable; EAS rejects revocable attestations on irrevocable schemas.
   - Both (a) and the future (b) bind delegates only. An admin can always bypass `multiPublish` with `execute(EAS, …)`. A delegate can't, *provided its `approvedTargets` never include EAS or the `address(0)` wildcard*. The client's grant flow must enforce that.
 
-Executor-path note for step 8: a session key that targets the executor can call `executor.onUninstall()` with the account as `msg.sender`, which breaks publishing until it's reinstalled. Install and uninstall must only take effect when initiated by the router extension's admin-only functions.
+Executor-path notes for step 8 (as implemented in step 7):
+- `onInstall`/`onUninstall` only take effect when the account's `isModuleInstalled(2, executor, "")` already reports the module installed (install) or no longer installed (uninstall). This stops a session key that targets the executor from wiping or re-pointing its config. The Router extension must therefore expose `isModuleInstalled`, mark the module installed *before* calling `onInstall`, and mark it uninstalled *before* calling `onUninstall`.
+- `revoke`/`multiRevoke` act on the account's own attestations. A session key allowed to target the executor can therefore revoke *all* of the account's revocable attestations, including the owner's. Admins don't need the executor to revoke (`execute(EAS, revoke)` works), so this power mainly reaches delegates. Grant executor targets to third parties accordingly. If that's too broad, drop these two functions (isolated in their own commit).
 
 ## 3. Work breakdown (one commit each)
 
