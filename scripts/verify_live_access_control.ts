@@ -84,13 +84,20 @@ export async function verifyLiveAccessControl(
     if (problem) failures.push(`${label}: ${problem}`);
   }
 
-  /** Static call from `from`; returns the revert data, or null if it succeeded. */
+  /**
+   * Static call from `from`; returns the revert data, or null if it succeeded.
+   * `from` is an unfunded random address, and nodes that charge fees on eth_call
+   * (hardhat node on an OP chain adds the L1 data fee) would reject it before it
+   * runs, so a state override gives it a balance for the call.
+   */
   async function revertData(data: string, from: string): Promise<string | null> {
     try {
-      await ethers.provider.call({ to: account, data, from });
+      await ethers.provider.send("eth_call", [{ to: account, data, from }, "latest", { [from]: { balance: "0xde0b6b3a7640000" } }]);
       return null;
     } catch (e: any) {
-      return e.data ?? e.info?.error?.data ?? e.error?.data ?? "0x";
+      const found = [e.data, e.info?.error?.data, e.error?.data].find((d) => typeof d === "string" && d.startsWith("0x"));
+      if (found === undefined) throw e;
+      return found;
     }
   }
 

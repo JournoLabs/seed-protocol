@@ -141,4 +141,4 @@ Rollback is `replaceExtension` back to the implementation in `routing-before.jso
 
 ## Other scripts
 
-`scripts/get_4_byte_selectors.ts` doesn't depend on Hardhat and runs with `bun`. `scripts/decode_attestation_data.ts` is an unported Hardhat 2 scratch script, pending a keep-or-delete decision (deploy plan, I6).
+`scripts/get_4_byte_selectors.ts` doesn't depend on Hardhat and runs with `bun`. `scripts/decode_attestation_data.ts` is an unported Hardhat 2 scratch script, kept pending review and left out of the type-check.

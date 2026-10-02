@@ -12,6 +12,6 @@
     "types": ["node", "mocha"]
   },
   "include": ["hardhat.config.ts", "ignition/**/*", "scripts/**/*", "test/**/*", "types/**/*"],
-  // Hardhat 2 scratch script, kept or deleted per docs/deploy-plan.md input I6.
+  // Unported Hardhat 2 scratch script, kept pending review (docs/deploy-plan.md, I6).
   "exclude": ["scripts/decode_attestation_data.ts"]
 }

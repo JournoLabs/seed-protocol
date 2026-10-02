@@ -186,13 +186,13 @@ The SDK also needs the new addresses (executor, extensions) from step 9.7.
 
 | ID | Input | Needed by |
 |----|-------|-----------|
-| I1 | `ManagedAccountFactory` address on OP Sepolia. Goes in `ignition/parameters/optimism_sepolia.json` as `SeedRollout.factory`. **Open.** | step 7, step 9 |
-| I2 | Who holds `EXTENSION_ROLE`, and can a script use that key (raw key / keystore) or is it a dashboard/Safe wallet? Decides P4's mode. The factory is `PermissionsEnumerable`, so `seed:replace-extension --dry-run` lists the holders once I1 is known; what's left is whether a script can sign for them. **Open.** | step 9.3 |
-| I3 | A test account (and its admin address) on OP Sepolia for `verify-live` and an impersonated admin publish. The admin *key* is no longer needed: the session-key publish runs on a fresh account the rehearsal creates on the real factory. **Open.** | steps 7, 9.4–9.5 |
+| I1 | `ManagedAccountFactory` address on OP Sepolia. **Answered:** `0x76F47D88bfaf670F5208911181fCDC0E160cb16d`, in `ignition/parameters/optimism_sepolia.json` as `SeedRollout.factory`. | step 7, step 9 |
+| I2 | Who holds `EXTENSION_ROLE`, and can a script use that key (raw key / keystore) or is it a dashboard/Safe wallet? Decides P4's mode. **Answered by the factory:** the only holder is `0x00467f…4D84B`, the `DEV_KEY` address, so the script sends the call itself if that key is used (P4's first mode). If the deploy keys change (I7), the role has to be granted to the new key first, or the calldata submitted from `0x00467f…`. | step 9.3 |
+| I3 | A test account (and its admin address) on OP Sepolia for `verify-live` and an impersonated admin publish. The admin *key* is no longer needed: the session-key publish runs on a fresh account the rehearsal creates on the real factory. Without `--account`, the fork rehearsal checks the factory's first account. **Still wanted for 9.4–9.5**, ideally an account the SDK team uses. | steps 7, 9.4–9.5 |
 | I4 | Did any account install the old executor `0x0434…`? **Answered: no (2026-10-02).** See the progress log. | step 9.6 |
 | I5 | `metadataURI` for the extension metadata. The old ones were thirdweb-published IPFS URIs; `""` works on-chain. | step 3 |
-| I6 | Keep `decode_attestation_data.ts`? | step 8 |
-| I7 | Deployer key for OP Sepolia. Today `DEV_KEY`; consider `hardhat-keystore` (installed) instead of a plaintext `.env` | step 9.1 |
+| I6 | Keep `decode_attestation_data.ts`? **Answered: keep** for now, pending personal review; it stays unported and out of the type-check. | step 8 |
+| I7 | Deployer key for OP Sepolia. Today `DEV_KEY`; consider `hardhat-keystore` (installed) instead of a plaintext `.env`. **Open, being decided.** Changing it changes the CREATE2 addresses (update `SEED_DEPLOYER` in `scripts/lib/createxSalt.ts`) and, unless it's the same key, means granting it `EXTENSION_ROLE` (I2). | step 9.1, 9.3 |
 
 ## 6. Risks
 
@@ -215,7 +215,7 @@ The access-control plan's §6 future work (per-account schema allowlist, per-del
 
 ## 8. Progress log
 
-**2026-10-02: steps 1–6 and 8 done; step 7 tooling done, run pending I1; step 10 done except marking §4.** 126 tests pass (116 before this work) and the whole project type-checks; `rehearse:local` is green.
+**2026-10-02: steps 1–6, 8 and 10 done; step 7 tooling done (run below).** 126 tests pass (116 before this work) and the whole project type-checks; `rehearse:local` is green.
 
 What changed from the plan as written:
 - **Rollout scripts are Hardhat tasks** (`seed:*`; see the README's task table), because `hardhat run` can't take flags like `--dry-run`. The files keep their planned names in `scripts/`, and each task's body is an exported function the tests call on the in-process network.
@@ -241,4 +241,13 @@ These change if the deployer (I7), the salt label, the compiler settings (P3) or
 
 **I4: nobody installed the old executor.** `0x043462304114da543add6B693c686B7d98865F3E` was created at block 39,946,574 by `0x00467f…4D84B` (DEV_KEY). Etherscan V2 shows no other transaction to it, no internal calls into it (an account's `onInstall` would be one), and no logs at all, including its `ModuleInitialized`. Caveat: the full-range log query couldn't be cross-checked against a known-busy contract (EAS timed out), so the transaction lists are the main evidence. Step 9.6 is then just pointing the SDK at the new executor.
 
-**Fork run so far:** `optimism_sepolia_fork` starts through the Alchemy URL. Predict, the create2 deploy (CreateX present with the expected bytecode) and `extension-payload` work on it. The rest needs I1.
+**2026-10-02: step 7 done.** `bun run rehearse:op-sepolia` passes against the real factory, forked at block 49,587,876:
+- **Live routing before the rollout** (also in `ignition/deployments/op-sepolia-fork-rehearsal/routing-before.json`, gitignored):
+  - `AccountExtension` → `0xCD68591e4F9FA55c4a9938A5574E22517047a055` (20 functions);
+  - `SeedProtocolExtension` → `0xe8A567d96BaaF98805A186bb825cC0b2430b607A`, the last implementation in the old `get_extension_json.ts`. It routes `multiPublish`, `setEas` and `getEas`, with metadata `ipfs://QmfNsWGDnnKVw5bYuWnvy9j13bhv4vH3XeaJH6SuDLPjyw`.
+
+  Nothing else is registered, so there are no selector conflicts.
+- **`EXTENSION_ROLE`:** held only by `0x00467f…4D84B` (`DEV_KEY`).
+- **Result:** one `multicall` replaced `SeedProtocolExtension` (dropping `setEas`) and added `SeedExecutorRouterExtension`, and the routing read-back passed. `verify-live` passed all 12 checks on the factory's first account, `0x67a4881391aD8B1f197C6bF7a556d70f87C3a786`. Admin and session-key (UserOp) publishes passed on a fresh account created on the real factory.
+- **Fixed on the way:** `verify-live`'s random-caller `eth_call` failed on the forking node, which charges the OP L1 data fee up front even on calls. It now gives the caller a balance with a state override.
+- **For I5:** the live extension's `metadataURI` is the IPFS URI above, and the rollout writes `""` unless `--metadata-uri` is passed.

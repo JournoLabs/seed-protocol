@@ -11,6 +11,7 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { Interface } from "ethers";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const RPC = "http://127.0.0.1:8545";
@@ -55,6 +56,17 @@ async function startNode(args: string[]): Promise<ChildProcess> {
   }
   node.kill();
   throw new Error(`hardhat node didn't come up; see ${NODE_LOG}`);
+}
+
+/** The factory's first account (BaseAccountFactory.getAccounts), or "" if it has none. */
+async function firstAccount(factory: string): Promise<string> {
+  const iface = new Interface(["function getAccounts(uint256 start, uint256 end) view returns (address[])"]);
+  try {
+    const result = await rpc("eth_call", [{ to: factory, data: iface.encodeFunctionData("getAccounts", [0, 1]) }, "latest"]);
+    return iface.decodeFunctionResult("getAccounts", result)[0][0] ?? "";
+  } catch {
+    return "";
+  }
 }
 
 function deployedAddresses(deploymentId: string): Record<string, string> {
@@ -137,7 +149,8 @@ async function rehearseOpSepolia(args: string[]) {
     hardhat("seed:replace-extension", ...rollout, "--impersonate", "auto");
     hardhat("seed:replace-extension", ...rollout, "--check-only");
 
-    const account = option("account");
+    // Without --account, check an existing account of the factory (verify-live is read-only).
+    const account = option("account") || (await firstAccount(parameters.SeedRollout.factory));
     const admin = option("admin");
     if (account) hardhat("seed:verify-live", ...rollout, "--account", account);
     hardhat(
@@ -145,7 +158,7 @@ async function rehearseOpSepolia(args: string[]) {
       ...(account && admin ? ["--account", account, "--impersonate-admin", admin] : []),
     );
     console.log(`\nOP Sepolia fork rehearsal passed. Routing before: ignition/deployments/${deploymentId}/routing-before.json`);
-    if (!account) console.log("No --account given: verify-live and the existing-account publish were skipped (input I3).");
+    if (!option("account")) console.log(`No --account given: verify-live used the factory's first account, ${account}.`);
   } finally {
     node.kill();
   }

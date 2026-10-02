@@ -1,5 +1,8 @@
 {
   "SeedProtocol": {
     "eas": "0x4200000000000000000000000000000000000021"
+  },
+  "SeedRollout": {
+    "factory": "0x76F47D88bfaf670F5208911181fCDC0E160cb16d"
   }
 }
