@@ -3,21 +3,16 @@ pragma solidity ^0.8.20;
 
 import "../interfaces/IEAS.sol";
 import {CreatedAttestationResult} from "../interfaces/ISeedProtocol.sol";
-import {AccountPermissionsStorage} from "@thirdweb-dev/contracts/extension/upgradeable/AccountPermissions.sol";
+import {SeedAccountAuth} from "./SeedAccountAuth.sol";
 import {SeedPublishLib} from "./SeedPublishLib.sol";
-
-/// @dev The one AccountCore getter the extension needs, called on the account itself.
-interface IAccountEntryPoint {
-    function entryPoint() external view returns (address);
-}
 
 /**
  * @title SeedProtocolExtensionBase
  * @notice Shared logic for Seed Protocol extensions on thirdweb ManagedAccounts.
  *
- * @dev Runs via delegatecall from the account's Router fallback: `address(this)` is the
- *      account and storage is the account's. The Router does no authorization, so every
- *      routed state-changing function must use `onlyAccountOrAdmin`.
+ * @dev Runs via delegatecall from the account's Router fallback (see SeedAccountAuth). The
+ *      Router does no authorization, so every routed state-changing function must use
+ *      `onlyAccountOrAdmin`.
  *
  *      Deploy as a plain contract (no proxy). The EAS address is an immutable, which lives
  *      in bytecode and so resolves correctly under delegatecall; changing it means deploying
@@ -27,12 +22,11 @@ interface IAccountEntryPoint {
  *      owner can always revoke anything published on their behalf, including by a delegate
  *      holding a session key.
  */
-abstract contract SeedProtocolExtensionBase {
+abstract contract SeedProtocolExtensionBase is SeedAccountAuth {
 
     event CreatedAttestation(CreatedAttestationResult result);
     event SeedPublished(bytes returnedDataFromEAS);
 
-    error Unauthorized(address caller);
     error InvalidEAS(address eas);
     error AttestationFailed(bytes32 schemaUid);
 
@@ -43,17 +37,10 @@ abstract contract SeedProtocolExtensionBase {
         _eas = IEAS(eas_);
     }
 
-    /**
-     * @dev Allowed callers, evaluated in the account's context:
-     *      - the account itself: `execute`/`executeBatch` self-calls by admins or by session
-     *        keys whose approved targets include the account (delegated publishing)
-     *      - an account admin calling the account directly
-     *      - the EntryPoint calling the account directly; it only does so after
-     *        `validateUserOp` succeeds, and session keys are limited to `execute`/
-     *        `executeBatch`, so this implies an admin-signed UserOp
-     */
+    /// @dev Self-calls (admins, or session keys allowed to target the account), account
+    ///      admins and the EntryPoint. See SeedAccountAuth.
     modifier onlyAccountOrAdmin() {
-        _checkCaller();
+        _checkAccountOrAdmin();
         _;
     }
 
@@ -64,13 +51,6 @@ abstract contract SeedProtocolExtensionBase {
     /*///////////////////////////////////////////////////////////////
                             Internal functions
     //////////////////////////////////////////////////////////////*/
-
-    function _checkCaller() internal view {
-        if (msg.sender == address(this)) return;
-        if (AccountPermissionsStorage.data().isAdmin[msg.sender]) return;
-        if (msg.sender == IAccountEntryPoint(address(this)).entryPoint()) return;
-        revert Unauthorized(msg.sender);
-    }
 
     /// @dev Creates the seed and/or version when the request doesn't already reference them.
     function _publish(
