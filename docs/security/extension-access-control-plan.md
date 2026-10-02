@@ -152,10 +152,29 @@ So any revoke function a delegate can reach could revoke **all** of the account'
 
 Old `eas` values left in account storage are harmless leftovers.
 
+## 4b. Client (seed-protocol-sdk) changes required before rollout
+Reviewed `../seed-protocol-sdk` at `73cc8c8` (2026-10-02). The contract fixes break these SDK paths, so the SDK changes must ship before (or with) the extension replacement:
+
+1. **Interactive "modular" publishing calls the ManagedAccount directly from a non-admin session key.**
+   - `ensureManagedSignerSessionKey` adds the modular (EIP-7702) wallet with `addSessionKey` (not admin).
+   - `createAttestations` then sends `multiPublish` with `to = managedAddress` from that wallet, so the account sees `msg.sender = modular wallet`.
+   - This works today only because `multiPublish` was unauthenticated. After the fix it reverts `Unauthorized`.
+   - Fix options: (a) send ManagedAccount UserOps signed by the modular wallet's key (`execute(account | executor, …)`), the standard session-key flow the harness tests; or (b) make the modular wallet an account admin (simpler, but full control).
+2. **`ensureManagedAccountEasConfigured` sends `setEas`**, which is no longer routed (D1). It should only check `getEas()` against config (`assertManagedAccountEasMatchesConfig` already does).
+3. **`defaultApprovedTargetsForModularPublish` grants `[account, EAS, executor]`.** EAS as a target lets that key attest directly, bypassing forced revocability (D7), and the account target lets it call any self-callable function. If (1a) is chosen, grant only what the flow uses (ideally just the executor). Automation keys already use executor-only targets (`approvedTargetsForAutomationPublish`).
+4. **Revocation via the executor** (`revokeAttestations` sends `multiRevoke` to the executor for automation keys and "legacy module attester" seeds) no longer exists (D8). Revocation must be owner-signed via `execute(EAS, multiRevoke)`.
+5. **`assertExecutorModuleReadyForAccount`** treats Router accounts as unsupported for automation. With `SeedExecutorRouterExtension` installed (`installSeedExecutor`, admin-signed), they're supported; `isInitialized`/`getEAS` checks still work.
+
+Verified compatible, no change needed:
+- **Request ordering:** `orderPayloadByDependencies` topologically sorts so referenced seeds come first, matching the forward-reference rule.
+- **List relations:** encoded as one `bytes32[]` attestation, always resolved client-side. Batches with unresolved ids publish one request per tx (`hasCrossPayloadUnresolved`), with cross-request `propertiesToUpdate` filtered out, so the contract never fills lists.
+- **Single relations:** one attestation and one data entry per target (deduped), with a placeholder the contract replaces. Compatible with `PropertyToUpdateNotFound` / `AmbiguousPropertyToUpdate`.
+- **Executor ABI:** `publishIndex`, `versionUid` before `seedSchemaUid`; matches. The SDK doesn't call `createSeed`/`createVersion`/`publish` on the executor.
+
 ## 5. Inputs needed before rollout
 - ManagedAccountFactory address on OP Sepolia, and which key holds `EXTENSION_ROLE`.
-- Which `multiPublish` variant the client calls today (legacy string `publishLocalId` or V2 `publishIndex`). Both selectors can be routed at once, but `getEas` can only belong to one extension.
-- How the client invokes `multiPublish` today: admin EOA direct, UserOp `execute(account, …)`, or session keys. This confirms D2 covers every live path.
+- ~~Which `multiPublish` variant the client calls.~~ **Answered (SDK):** the legacy string `publishLocalId` ABI on the ManagedAccount (`packages/publish/src/helpers/abi/publisher.ts`), and the executor's `publishIndex` ABI on the executor.
+- ~~How the client invokes `multiPublish`.~~ **Answered (SDK):** see section 4b. One live path is **not** covered by D2 and depends on the vulnerability.
 - ~~How the client orders requests in a batch.~~ **Answered:** the client publishes referenced seeds first, then the requests whose properties reference them. That's what the contracts require (backward references revert with `PublishTargetAlreadyAttested`). The 2024 sample in `scripts/utils/test_data.ts` uses the backward order and gets fixed with the scripts in step 9.
 
 ## 6. Future work (not in this branch)
