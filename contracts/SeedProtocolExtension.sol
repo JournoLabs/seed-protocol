@@ -42,7 +42,7 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, SeedProtocolExtensionBase
                 for (uint m = 0; m < requests.length; m++) {
                     if (Strings.equal(requests[m].localId, propertyToUpdate.publishLocalId)) {
                         found = true;
-                        _setSeedReference(
+                        SeedPublishLib.setSeedReference(
                             requests[m].listOfAttestations,
                             i,
                             m,
@@ -51,7 +51,7 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, SeedProtocolExtensionBase
                         );
                     }
                 }
-                if (!found) revert UnknownPublishLocalId(propertyToUpdate.publishLocalId);
+                if (!found) revert SeedPublishLib.UnknownPublishLocalId(propertyToUpdate.publishLocalId);
             }
 
             value = _attestProperties(requestToPublish.listOfAttestations, newVersionUid, value);

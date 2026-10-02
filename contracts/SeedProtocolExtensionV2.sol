@@ -39,8 +39,8 @@ contract SeedProtocolExtensionV2 is ISeedProtocol, SeedProtocolExtensionBase {
             for (uint l = 0; l < propertiesToUpdate.length; l++) {
                 PropertyToUpdateWithSeed memory propertyToUpdate = propertiesToUpdate[l];
                 uint256 idx = propertyToUpdate.publishIndex;
-                if (idx >= requests.length) revert PublishIndexOutOfBounds(idx, requests.length);
-                _setSeedReference(
+                SeedPublishLib.checkPublishIndex(idx, requests.length);
+                SeedPublishLib.setSeedReference(
                     requests[idx].listOfAttestations,
                     i,
                     idx,
