@@ -56,13 +56,12 @@ Network credentials are read with Hardhat's `configVariable()`, from the environ
 | Variable | Used for |
 |----------|----------|
 | `OPTIMISM_SEPOLIA_RPC_URL`, `DEV_KEY` | `--network optimism_sepolia` |
-| `LOCALHOST_TESTING_KEY` | `--network localhost` |
 | `ETHERSCAN_API_KEY` | `hardhat verify` |
 
 They're only resolved when a task needs them; building and testing need none.
 
 ## Scripts and deployment
 
-Deployment is being reworked. Most files in `scripts/` are still Hardhat 2 scripts and start with a note saying so. They won't run until they're ported or replaced (see [docs/hardhat3-migration-plan.md](docs/hardhat3-migration-plan.md), H9). That includes `bun run setup:local` and `bun run validate:local`.
+Deployment is being reworked per [docs/deploy-plan.md](docs/deploy-plan.md). `bun run rehearse:local` runs the whole rollout against a throwaway `hardhat node`. Files in `scripts/` that start with a "not yet ported" note are still Hardhat 2 scripts and won't run.
 
 `scripts/get_4_byte_selectors.ts` and `scripts/print_test_json.ts` don't depend on Hardhat and run with `bun`.

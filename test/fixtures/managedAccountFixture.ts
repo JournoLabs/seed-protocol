@@ -1,25 +1,12 @@
-import type { HardhatEthers, HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
-import {
-  AbiCoder,
-  Contract,
-  type ContractRunner,
-  type ContractTransactionReceipt,
-  Interface,
-  type Result,
-  ZeroAddress,
-  ZeroHash,
-  getBytes,
-  hexlify,
-  parseEther,
-  parseUnits,
-  randomBytes,
-} from "ethers";
+import type { HardhatEthers } from "@nomicfoundation/hardhat-ethers/types";
+import { Contract, Interface, type Result, parseEther } from "ethers";
 import {
   EXECUTOR_ROUTER_FUNCTIONS,
   SEED_EXTENSION_FUNCTIONS,
   buildExtension,
   mergeInterfaces,
 } from "../../scripts/lib/extensions.js";
+import { type DynamicContract, createAccountHelpers } from "../../scripts/lib/managedAccount.js";
 import { deployEASWithSchemas } from "./easFixture.js";
 
 /**
@@ -34,18 +21,18 @@ import { deployEASWithSchemas } from "./easFixture.js";
  * `createManagedAccountFixtures(connection)`; call it once per test file so
  * `loadFixture` sees the same fixture functions each time. Everything else is a
  * plain export.
+ *
+ * Session-key, UserOp and publish-request helpers live in scripts/lib/managedAccount.ts
+ * (the rehearsals use them too) and are re-exported here.
  */
 
-const MAX_UINT128 = (1n << 128n) - 1n;
-const ONE_DAY = 24n * 60n * 60n;
-
-/**
- * An ethers `Contract` whose methods come from a merged or runtime-chosen ABI.
- * Ethers types `connect()` as returning a bare `BaseContract`, which drops the
- * dynamic methods; this keeps them.
- */
-// Our signature must come first: TypeScript picks the first matching overload of an intersection.
-export type DynamicContract = { connect(runner: ContractRunner | null): DynamicContract } & Contract;
+export {
+  type AttestedEvent,
+  type DynamicContract,
+  type SignerPermissionRequest,
+  attestedEvents,
+  buildPublishRequests,
+} from "../../scripts/lib/managedAccount.js";
 
 interface SeedExtensionConfig {
   name: string;
@@ -69,32 +56,6 @@ export const SEED_EXTENSION_V2: SeedExtensionConfig = {
   constructorArgs: ({ easAddress }) => [easAddress],
   functions: SEED_EXTENSION_FUNCTIONS,
 };
-
-const SIGNER_PERMISSION_TYPES = {
-  SignerPermissionRequest: [
-    { name: "signer", type: "address" },
-    { name: "isAdmin", type: "uint8" },
-    { name: "approvedTargets", type: "address[]" },
-    { name: "nativeTokenLimitPerTransaction", type: "uint256" },
-    { name: "permissionStartTimestamp", type: "uint128" },
-    { name: "permissionEndTimestamp", type: "uint128" },
-    { name: "reqValidityStartTimestamp", type: "uint128" },
-    { name: "reqValidityEndTimestamp", type: "uint128" },
-    { name: "uid", type: "bytes32" },
-  ],
-};
-
-export interface SignerPermissionRequest {
-  signer: string;
-  isAdmin?: number;
-  approvedTargets?: string[];
-  nativeTokenLimitPerTransaction?: bigint;
-  permissionStartTimestamp?: bigint;
-  permissionEndTimestamp?: bigint;
-  reqValidityStartTimestamp?: bigint;
-  reqValidityEndTimestamp?: bigint;
-  uid?: string;
-}
 
 // ---------------------------------------------------------------------------
 // Router helpers
@@ -154,183 +115,12 @@ export async function expectUserOpRejected(
 }
 
 // ---------------------------------------------------------------------------
-// EAS helpers
-// ---------------------------------------------------------------------------
-
-export interface AttestedEvent {
-  recipient: string;
-  attester: string;
-  uid: string;
-  schema: string;
-}
-
-/** Returns `{ uid, attester, recipient, schema }` for every Attested event in a receipt. */
-export function attestedEvents(
-  eas: { target: string | unknown; interface: Interface },
-  receipt: ContractTransactionReceipt | null,
-): AttestedEvent[] {
-  const easAddress = String(eas.target).toLowerCase();
-  return (receipt?.logs ?? [])
-    .filter((log) => log.address.toLowerCase() === easAddress)
-    .map((log) => eas.interface.parseLog(log))
-    .filter((parsed) => parsed?.name === "Attested")
-    .map((parsed) => ({
-      recipient: parsed!.args.recipient,
-      attester: parsed!.args.attester,
-      uid: parsed!.args.uid,
-      schema: parsed!.args.schemaUID,
-    }));
-}
-
-/**
- * One publish request: new seed + version, plus one property attestation whose
- * refUID the extension rewrites to the new version. With no propertiesToUpdate it
- * encodes for both the legacy (string localId) and V2 (publishIndex) ABIs.
- */
-export function buildPublishRequests(
-  setup: { seedSchemaUid: string; versionSchemaUid: string; propertySchemaUid: string },
-  { revocable = true, propertyValue = "hello" }: { revocable?: boolean; propertyValue?: string } = {},
-) {
-  return [
-    {
-      localId: "request-1",
-      seedUid: ZeroHash,
-      seedSchemaUid: setup.seedSchemaUid,
-      versionUid: ZeroHash,
-      versionSchemaUid: setup.versionSchemaUid,
-      seedIsRevocable: revocable,
-      listOfAttestations: [
-        {
-          schema: setup.propertySchemaUid,
-          data: [
-            {
-              recipient: ZeroAddress,
-              expirationTime: 0n,
-              revocable,
-              refUID: ZeroHash,
-              data: AbiCoder.defaultAbiCoder().encode(["string"], [propertyValue]),
-              value: 0n,
-            },
-          ],
-        },
-      ],
-      propertiesToUpdate: [] as unknown[],
-    },
-  ];
-}
-
-// ---------------------------------------------------------------------------
 // Network-bound helpers and fixtures
 // ---------------------------------------------------------------------------
 
 export function createManagedAccountFixtures({ ethers }: { ethers: HardhatEthers }) {
-  async function latestTimestamp(): Promise<bigint> {
-    const block = await ethers.provider.getBlock("latest");
-    return BigInt(block!.timestamp);
-  }
+  const { setSignerPermissions, grantSessionKey, revokeSessionKey, sendUserOp } = createAccountHelpers({ ethers });
 
-  /**
-   * Signs and submits a SignerPermissionRequest. `admin` must be an account admin;
-   * the request can be submitted by anyone, matching thirdweb's design.
-   */
-  async function setSignerPermissions(account: DynamicContract, admin: HardhatEthersSigner, request: SignerPermissionRequest) {
-    const { chainId } = await ethers.provider.getNetwork();
-    const domain = { name: "Account", version: "1", chainId, verifyingContract: await account.getAddress() };
-    const fullRequest = {
-      isAdmin: 0,
-      approvedTargets: [],
-      nativeTokenLimitPerTransaction: 0n,
-      permissionStartTimestamp: 0n,
-      permissionEndTimestamp: 0n,
-      reqValidityStartTimestamp: 0n,
-      reqValidityEndTimestamp: MAX_UINT128,
-      uid: hexlify(randomBytes(32)),
-      ...request,
-    };
-    const signature = await admin.signTypedData(domain, SIGNER_PERMISSION_TYPES, fullRequest);
-    const tx = await account.connect(admin).setPermissionsForSigner(fullRequest, signature);
-    return tx.wait();
-  }
-
-  /** Grants a non-admin session key (e.g. a third-party publisher) scoped to `approvedTargets`. */
-  async function grantSessionKey(
-    account: DynamicContract,
-    admin: HardhatEthersSigner,
-    signerAddress: string,
-    { approvedTargets, nativeTokenLimit = 0n, duration = ONE_DAY }: { approvedTargets: string[]; nativeTokenLimit?: bigint; duration?: bigint },
-  ) {
-    const now = await latestTimestamp();
-    return setSignerPermissions(account, admin, {
-      signer: signerAddress,
-      approvedTargets,
-      nativeTokenLimitPerTransaction: nativeTokenLimit,
-      permissionStartTimestamp: now - 1n,
-      permissionEndTimestamp: now + duration,
-    });
-  }
-
-  /** Revokes a session key: no targets and an expired window, so `isValidSigner` rejects it. */
-  async function revokeSessionKey(account: DynamicContract, admin: HardhatEthersSigner, signerAddress: string) {
-    return setSignerPermissions(account, admin, { signer: signerAddress });
-  }
-
-  // -------------------------------------------------------------------------
-  // ERC-4337 UserOperations (EntryPoint v0.6)
-  // -------------------------------------------------------------------------
-
-  /**
-   * Signs `callData` as a UserOperation from `signer` and submits it via handleOps.
-   * Validation failures make handleOps revert with `FailedOp`; execution failures
-   * don't revert, so the result reports `success` and any `revertReason`.
-   */
-  async function sendUserOp({
-    entryPoint,
-    account,
-    signer,
-    callData,
-    bundler,
-  }: {
-    entryPoint: ManagedAccountSetup["entryPoint"];
-    account: DynamicContract;
-    signer: HardhatEthersSigner;
-    callData: string;
-    bundler: HardhatEthersSigner;
-  }) {
-    const sender = await account.getAddress();
-    const block = await ethers.provider.getBlock("latest");
-    const priorityFee = parseUnits("1", "gwei");
-
-    const op = {
-      sender,
-      nonce: await entryPoint.getNonce(sender, 0),
-      initCode: "0x",
-      callData,
-      callGasLimit: 5_000_000n,
-      verificationGasLimit: 1_000_000n,
-      preVerificationGas: 100_000n,
-      maxFeePerGas: block!.baseFeePerGas! * 2n + priorityFee,
-      maxPriorityFeePerGas: priorityFee,
-      paymasterAndData: "0x",
-      signature: "0x",
-    };
-    op.signature = await signer.signMessage(getBytes(await entryPoint.getUserOpHash(op)));
-
-    const receipt = await (await entryPoint.connect(bundler).handleOps([op], bundler.address)).wait();
-
-    let success = false;
-    let revertReason: string | null = null;
-    for (const log of receipt?.logs ?? []) {
-      let parsed;
-      try {
-        parsed = entryPoint.interface.parseLog(log);
-      } catch {
-        continue;
-      }
-      if (parsed?.name === "UserOperationEvent") success = parsed.args.success;
-      if (parsed?.name === "UserOperationRevertReason") revertReason = parsed.args.revertReason;
-    }
-    return { receipt, success, revertReason };
-  }
 
   // -------------------------------------------------------------------------
   // Fixture

@@ -32,9 +32,16 @@ const verifyLive = task('seed:verify-live', 'Static checks of a live account aga
   .setAction(() => import('./scripts/verify_live_access_control.js'))
   .build()
 
+const publishSmoke = task('seed:publish-smoke', 'Admin and session-key publishes through the live routing (simulated networks only)')
+  .addOption({ name: 'parameters', description: 'Parameters file (default: ignition/parameters/<network>.json)', defaultValue: '' })
+  .addOption({ name: 'account', description: 'Also publish on this existing account…', defaultValue: '' })
+  .addOption({ name: 'impersonateAdmin', description: '…as this admin of it', defaultValue: '' })
+  .setAction(() => import('./scripts/publish_smoke.js'))
+  .build()
+
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
-  tasks: [extensionPayload, replaceExtension, verifyLive],
+  tasks: [extensionPayload, replaceExtension, verifyLive, publishSmoke],
   paths: {
     sources: './contracts',
   },
@@ -70,7 +77,7 @@ export default defineConfig({
       type: 'http',
       url: 'http://127.0.0.1:8545',
       chainId: 31337,
-      accounts: [configVariable('LOCALHOST_TESTING_KEY')],
+      // `hardhat node`'s own unlocked accounts (rehearse:local).
     },
     optimism_sepolia: {
       type: 'http',

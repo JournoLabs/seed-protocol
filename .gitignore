@@ -22,3 +22,6 @@ metadata
 
 # Gas benchmark reports
 /gas-reports/
+
+# Ignition records for local and rehearsal chains (public-network records are committed)
+/ignition/deployments/chain-31337

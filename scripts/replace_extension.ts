@@ -13,6 +13,7 @@ import {
   routingMismatches,
   takeSnapshot,
 } from "./lib/routing.js";
+import { isSimulated } from "./lib/network.js";
 import { buildSeedExtensions, defaultDeploymentId, loadRolloutParameters, loadSeedAddresses } from "./lib/seedDeployment.js";
 
 /**
@@ -40,11 +41,11 @@ interface Args {
   impersonate: string;
 }
 
-type Connection = Awaited<ReturnType<HardhatRuntimeEnvironment["network"]["connect"]>>;
+type Connection = Awaited<ReturnType<HardhatRuntimeEnvironment["network"]["getOrCreate"]>>;
 export type SeedExtensions = Awaited<ReturnType<typeof buildSeedExtensions>>;
 
 export default async function replaceExtensionTask(args: Args, hre: HardhatRuntimeEnvironment) {
-  const connection = await hre.network.connect();
+  const connection = await hre.network.getOrCreate();
   const { chainId } = await connection.ethers.provider.getNetwork();
   const deploymentId = args.deploymentId || defaultDeploymentId(chainId);
   const parametersFile = args.parameters || `ignition/parameters/${connection.networkName}.json`;
@@ -160,10 +161,9 @@ function printCall(tx: { to: string; data: string; value: bigint }, changes: Rou
  * (the in-process network, `hardhat node`, or a fork).
  */
 async function resolveSender(connection: Connection, impersonate: string) {
-  const { ethers, networkConfig } = connection;
+  const { ethers } = connection;
   if (impersonate) {
-    const { chainId } = await ethers.provider.getNetwork();
-    if (networkConfig.type !== "edr-simulated" && chainId !== 31337n) {
+    if (!(await isSimulated(connection))) {
       throw new Error(`--impersonate only works on simulated networks, not ${connection.networkName}`);
     }
     const address = getAddress(impersonate);

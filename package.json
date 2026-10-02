@@ -12,8 +12,7 @@
     "test": "hardhat test",
     "test:gas": "hardhat test --gas-stats",
     "coverage": "hardhat test --coverage",
-    "setup:local": "bun run scripts/setup_local.ts",
-    "validate:local": "npx hardhat run scripts/validate_multi_publish_local.ts --network localhost"
+    "rehearse:local": "bun scripts/rehearse.ts local"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.2.0",

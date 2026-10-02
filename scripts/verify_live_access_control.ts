@@ -33,11 +33,11 @@ interface Args {
   deploymentId: string;
 }
 
-type Connection = Awaited<ReturnType<HardhatRuntimeEnvironment["network"]["connect"]>>;
+type Connection = Awaited<ReturnType<HardhatRuntimeEnvironment["network"]["getOrCreate"]>>;
 
 export default async function verifyLiveTask(args: Args, hre: HardhatRuntimeEnvironment) {
   if (!args.account) throw new Error("--account is required (a test account on this network, input I3)");
-  const connection = await hre.network.connect();
+  const connection = await hre.network.getOrCreate();
   const { chainId } = await connection.ethers.provider.getNetwork();
   const deploymentId = args.deploymentId || defaultDeploymentId(chainId);
   const parametersFile = args.parameters || `ignition/parameters/${connection.networkName}.json`;

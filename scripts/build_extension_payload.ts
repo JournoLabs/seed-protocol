@@ -10,7 +10,7 @@ export default async function buildExtensionPayload(
   { deploymentId, metadataUri }: { deploymentId: string; metadataUri: string },
   hre: HardhatRuntimeEnvironment,
 ) {
-  const { ethers } = await hre.network.connect();
+  const { ethers } = await hre.network.getOrCreate();
   const { chainId } = await ethers.provider.getNetwork();
   const id = deploymentId || defaultDeploymentId(chainId);
 
