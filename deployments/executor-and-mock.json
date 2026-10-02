@@ -1,0 +1,9 @@
+{
+  "localhost": {
+    "SeedProtocolExecutor": "0x9d4454B023096f34B160D6B654540c56A1F81688",
+    "MockERC7579Account": "0x5eb3Bc0a489C5A8288765d2336659EbCA68FCd00"
+  },
+  "optimism_sepolia": {
+    "SeedProtocolExecutor": "0x043462304114da543add6B693c686B7d98865F3E"
+  }
+}

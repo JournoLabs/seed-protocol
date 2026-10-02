@@ -16,3 +16,8 @@ node_modules
 .yarn
 .idea
 .DS_Store
+
+metadata
+
+# Gas benchmark reports
+/gas-reports/

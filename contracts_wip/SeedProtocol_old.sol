@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./IEAS_SeedProtocol.sol";
 import {AttestationRequest, MultiAttestationRequest} from "./IEAS_SeedProtocol.sol";
-import {PublishRequestData, PublishReturnData, PropertyToUpdateWithSeed, CreatedAttestationResult} from "./ISeedProtocol.sol";
+import {PublishRequestData, PublishReturnData, PropertyToUpdateWithSeed, CreatedAttestationResult} from "../interfaces/ISeedProtocol.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
 

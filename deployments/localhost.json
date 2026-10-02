@@ -1,0 +1,15 @@
+{
+  "rpcUrl": "http://127.0.0.1:8545",
+  "chainId": 1337,
+  "easAddress": "0x809d550fca64d94Bd9F66E60752A544199cfAC3D",
+  "schemaRegistryAddress": "0x36C02dA8a0983159322a80FFE9F24b1acfF8B570",
+  "versionSchemaUid": "0x6461eb500481d4c88e4027377b4d790a18bd2844dada78a9328bb42988f779c7",
+  "postSchemaUid": "0x626a71b97473f1de8d543d3ef641609c49efae4ca6fc11863224895974f1e5b6",
+  "identitySchemaUid": "0x7810f35ce37e909c2fa51c46b6c411eee6e35a1ff4c8577f8625a35c549d4560",
+  "nameASchemaUid": "0xffa91c7850c177487da95dcb297700c2995f1bb5fbf7732b534307b240076cae",
+  "seedSchemaUid": "0x626a71b97473f1de8d543d3ef641609c49efae4ca6fc11863224895974f1e5b6",
+  "propertySchemaUid": "0xd197b54111dc7589f24dd29c9affafa84ee91fe31c78aecde2c1a281fce6cbaf",
+  "SeedProtocolExtension": "0x1c85638e118b37167e9298c2268758e058DdfDA0",
+  "SeedProtocolExecutor": "0x9d4454B023096f34B160D6B654540c56A1F81688",
+  "MockERC7579Account": "0x5eb3Bc0a489C5A8288765d2336659EbCA68FCd00"
+}

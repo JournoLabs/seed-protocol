@@ -18,6 +18,7 @@ import {
   SchemaUidKey
 }                   from '../types'
 import { testPublishRequestData }                              from './test_data'
+import { ethers }                                              from 'hardhat'
 
 
 const storageProvider: PropertyInfo[] = [
@@ -402,15 +403,18 @@ export const getUid = async (schemaRegistry: SchemaRegistry, schemaDefinition: s
       revocable: true,
     });
 
-    uid =  await tx.wait()
+    uid = await tx.wait()
 
-  } catch ( error ) {
-    console.log(`Error getting UID for schemaDefinition: ${schemaDefinition}`)
-    console.log(error)
-    // uid = await schemaRegistry.getSchema(schemaDefinition)
+  } catch (error) {
+    const message = (error as Error)?.message ?? String(error)
+    if (message.includes('AlreadyExists')) {
+      uid = SchemaRegistry.getSchemaUID(schemaDefinition, ZERO_ADDRESS, true)
+    } else {
+      console.log(`Error getting UID for schemaDefinition: ${schemaDefinition}`)
+      console.log(error)
+    }
   }
   return uid
-
 }
 
 export const createAndNameSchema = async (schemaRegistry: SchemaRegistry, nameASchemaUid: string, nameASchemaEncoder: SchemaEncoder, eas: EAS, name: string): Promise<string> => {
@@ -472,31 +476,40 @@ export const isString = (value: DataFnParams): value is string => {
   return typeof value === 'string'
 }
 
-export const createSeed = async ( permaPress: Contract, schemaUid: string, schemaTypeFormat: 'bytes32' | 'uint8',): Promise<string> => {
-  // const createSeedMethod = permaPress.getFunction(`createSeed(bytes32,bool)`);
+export const createSeed = async ( seedProtocol: Contract, schemaUid: string, schemaTypeFormat: 'bytes32' | 'uint8',): Promise<string> => {
+  const createSeedMethod = seedProtocol.getFunction(`createSeed(bytes32,bool)`);
+
+  if (!createSeedMethod) {
+    throw new Error('Function fragment not found');
+  }
+
+
+  const overrides: { value: bigint; gasLimit?: bigint } = {
+    value: BigInt(0),
+  };
+  // Cap gas for networks (e.g. local Hardhat) that enforce a tx gas cap below 30M
+  const TX_GAS_CAP = 16_777_216;
+  const estimated = await createSeedMethod.estimateGas(schemaUid, true, { value: 0n }).catch(() => null);
+  if (estimated != null && estimated <= BigInt(TX_GAS_CAP)) {
+    overrides.gasLimit = estimated;
+  } else {
+    overrides.gasLimit = BigInt(TX_GAS_CAP);
+  }
+  const transaction = await createSeedMethod.send(schemaUid, true, overrides);
+
+  // const [signer] = await ethers.getSigners();
   //
-  // if (!createSeedMethod) {
-  //   throw new Error('Function fragment not found');
-  // }
-
-
-  // const transaction = await createSeedMethod.send(schemaUid, true, {
-  //   value: BigInt(0),
-  //   // gasLimit: BigInt(1022881482n),
-  //   gasLimit: 30000000n,
-  // });
-
-  console.log('Calling createSeed with schemaUid: ', schemaUid)
-
-  const result = await permaPress.createSeed(schemaUid, true)
-
-  const receipt = await result.wait()
+  // console.log('Calling createSeed with schemaUid: ', schemaUid)
+  //
+  // const result = await seedProtocol.createSeed(signer.getAddress(), schemaUid, true)
+  //
+  // const receipt = await result.wait()
 
   // console.log('===== done =====')
   // console.log(done)
   // console.log('===== /done =====')
 
-  // const receipt = await transaction.wait();
+  const receipt = await transaction.wait();
 
   if (!receipt) {
     throw new Error('Transaction failed');
@@ -511,8 +524,8 @@ export const createSeed = async ( permaPress: Contract, schemaUid: string, schem
   for (const log of receipt.logs) {
     // attestationUid = log.data
     if (log.args) {
-      console.log(permaPress.interface.parseLog(log)?.args)
-      const args = permaPress.interface.parseLog(log)?.args.toArray()
+      console.log(seedProtocol.interface.parseLog(log)?.args)
+      const args = seedProtocol.interface.parseLog(log)?.args.toArray()
       if (args && args.length > 0) {
         for (let i = 0; i < args.length; i++) {
           const value = args[i]

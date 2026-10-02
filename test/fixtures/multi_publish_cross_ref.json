@@ -1,0 +1,38 @@
+[
+  {
+    "localId": "parent-request",
+    "seedUid": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "versionUid": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "seedSchemaUid": "__SEED_SCHEMA_UID__",
+    "versionSchemaUid": "__VERSION_SCHEMA_UID__",
+    "seedIsRevocable": true,
+    "listOfAttestations": [],
+    "propertiesToUpdate": [
+      { "publishIndex": 1, "propertySchemaUid": "__PROPERTY_SCHEMA_UID__" }
+    ]
+  },
+  {
+    "localId": "child-request",
+    "seedUid": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "versionUid": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "seedSchemaUid": "__SEED_SCHEMA_UID__",
+    "versionSchemaUid": "__VERSION_SCHEMA_UID__",
+    "seedIsRevocable": true,
+    "listOfAttestations": [
+      {
+        "schema": "__PROPERTY_SCHEMA_UID__",
+        "data": [
+          {
+            "recipient": "0x0000000000000000000000000000000000000000",
+            "revocable": true,
+            "value": "0",
+            "refUID": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "expirationTime": "0",
+            "data": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    ],
+    "propertiesToUpdate": []
+  }
+]

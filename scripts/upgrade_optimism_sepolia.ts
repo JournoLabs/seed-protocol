@@ -4,16 +4,16 @@ import { ethers, upgrades } from 'hardhat';
 
 async function main() {
   // Deploy SeedProtocol
-  const SeedProtocol = await ethers.getContractFactory('SeedProtocol');
-  const seedProtocol = await upgrades.upgradeProxy('0xA2b8315fd0F31c334be1B137D9E0FfbB3F200E57', SeedProtocol);
+  const SeedProtocolExtension = await ethers.getContractFactory('SeedProtocolExtension');
+  const seedProtocolExtension = await upgrades.upgradeProxy('0xf331b31A8e613320AA4b78ee908ee639E5936da8', SeedProtocolExtension);
 
-  if (!seedProtocol) {
-    throw new Error('SeedProtocol not deployed');
+  if (!seedProtocolExtension) {
+    throw new Error('SeedProtocolExtension not deployed');
   }
 
-  await seedProtocol.waitForDeployment();
+  await seedProtocolExtension.waitForDeployment();
 
-  console.log('SeedProtocol deployed to:', seedProtocol.target);
+  console.log('SeedProtocolExtension deployed to:', seedProtocolExtension.target);
 }
 
 main().catch((error) => {

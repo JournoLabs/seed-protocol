@@ -1,3 +1,7 @@
+import { ethers, }                          from 'hardhat'
+import { Contract, keccak256, toUtf8Bytes } from 'ethers'
+import SeedProtocolExtensionJson            from '../artifacts/contracts/SeedProtocolExtension.sol/SeedProtocolExtension.json'
+
 export const generateExpandedSignature = (methodName, fragment,) => {
   const expandType = (type,) => {
     if (type.baseType === 'tuple') {
@@ -14,16 +18,32 @@ export const generateExpandedSignature = (methodName, fragment,) => {
   }
 
   const inputs = fragment.inputs.map((input,) => {
-    console.log('Input', input,)
     return expandType(input,)
   },).join(',',)
 
-  // const outputs = fragment.outputs.map((output,) => {
-  //   return expandType(output,) + ' ' + output.name
-  // },).join(', ',)
-
-  // const payableModifier = fragment.payable ? ' payable' : ''
-  // const stateMutability = fragment.stateMutability ? ` ${fragment.stateMutability}` : ''
-
   return `${fragment.name}(${inputs})`
 }
+
+async function main() {
+
+  const [ signer ] = await ethers.getSigners();
+
+  const ethersContract = new Contract('0x9508D87306c443B6965db831417FE76ec4c4b596', SeedProtocolExtensionJson.abi, signer,)
+
+  const methodFragment = ethersContract.getFunction('multiPublish',)
+
+  console.log('Method fragment', methodFragment.fragment,)
+
+  const signature = generateExpandedSignature('multiPublish', methodFragment.fragment,)
+
+  console.log('Signature', signature,)
+
+   const selector = keccak256(toUtf8Bytes(signature)).slice(0, 10)
+  console.log(selector)
+
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

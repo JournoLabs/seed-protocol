@@ -1,0 +1,22 @@
+[
+  {
+    "localId": "request-1",
+    "seedUid": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "versionUid": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "seedSchemaUid": "__SEED_SCHEMA_UID__",
+    "versionSchemaUid": "__VERSION_SCHEMA_UID__",
+    "seedIsRevocable": true,
+    "listOfAttestations": [],
+    "propertiesToUpdate": []
+  },
+  {
+    "localId": "request-2",
+    "seedUid": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "versionUid": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "seedSchemaUid": "__SEED_SCHEMA_UID__",
+    "versionSchemaUid": "__VERSION_SCHEMA_UID__",
+    "seedIsRevocable": false,
+    "listOfAttestations": [],
+    "propertiesToUpdate": []
+  }
+]

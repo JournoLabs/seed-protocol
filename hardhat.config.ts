@@ -10,6 +10,17 @@ dotenv.config()
 
 const config: HardhatUserConfig = {
   solidity: {
+    compilers: [
+      {
+        version: '0.8.27',
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
+      },
+      {
     version: '0.8.19',
     settings: {
       optimizer: {
@@ -17,6 +28,17 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
     },
+  },
+      {
+    version: '0.8.20',
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+    },
+  },
+      ]
   },
   networks: {
     hardhat: {
@@ -42,6 +64,12 @@ const config: HardhatUserConfig = {
       ]
     },
   },
+  gasReporter: {
+    enabled: process.env.REPORT_GAS === "1",
+    outputFile: "gas-reports/gas-reporter.txt",
+    outputJSON: process.env.REPORT_GAS_JSON === "1",
+    currency: "USD",
+  },
   ethernal: {
     apiToken: process.env.ETHERNAL_API_TOKEN,
     disableSync: false, // If set to true, plugin will not sync blocks & txs
@@ -53,7 +81,20 @@ const config: HardhatUserConfig = {
     skipFirstBlock: false, // If set to true, the first block will be skipped. This is mostly useful to avoid having the first block synced with its tx when starting a mainnet fork
     verbose: false, // If set to true, will display this config object on start and the full error object
     resetOnStart: 'Hardhat'
-  }
+  },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY,
+    customChains: [
+      {
+        network: 'optimism_sepolia',
+        chainId: 11155420,
+        urls: {
+          apiURL: 'https://api-sepolia-optimism.etherscan.io/api',
+          browserURL: 'https://sepolia-optimism.etherscan.io/',
+        },
+      },
+    ],
+  },
 }
 
 export default config

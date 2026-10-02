@@ -160,7 +160,13 @@ export type ValuesStore = {
   linkSchemaUid?: string
   identityUids?: IdentitySchemaUids
   modelUids?: ModelUids | null
+  /** For executor tests: alias for postSchemaUid */
+  seedSchemaUid?: string
+  /** For executor tests: one property schema from modelUids (e.g. string value) */
+  propertySchemaUid?: string
 }
+
+const CONTRACT_NAME = 'SeedProtocolExtension'
 
 export const deployToLocalHardhat = async (): Promise<ValuesStore> => {
   // Deploy SchemaRegistry
@@ -218,10 +224,10 @@ export const deployToLocalHardhat = async (): Promise<ValuesStore> => {
   console.log(`versionSchemaUid: ${versionSchemaUid}`)
 
   // Deploy SeedProtocol
-  const SeedProtocol = await ethers.getContractFactory('SeedProtocol');
+  const SeedProtocol = await ethers.getContractFactory(CONTRACT_NAME);
   const seedProtocol = await upgrades.deployProxy(SeedProtocol, [
     easContractDeployed.target,
- ], { initializer: 'initialize' });
+ ], { initializer: 'initialize', unsafeAllow: ['delegatecall']});
 
   if (!seedProtocol) {
     throw new Error('SeedProtocol not deployed');
@@ -247,6 +253,24 @@ export const deployToLocalHardhat = async (): Promise<ValuesStore> => {
     }
   }
 
+  // const getEas = seedProtocol.getFunction(`getEas()`);
+  //
+  // if (!getEas) {
+  //   throw new Error('Function fragment not found');
+  // }
+  //
+  //
+  // const transaction = await getEas.send({
+  //   value: BigInt(0),
+  //   // gasLimit: BigInt(1022881482n),
+  //   gasLimit: 30000000n,
+  // });
+  //
+  // const receipt = await transaction.wait()
+  //
+  // console.log('receipt', receipt)
+
+
   // for (const propName in byte32Props) {
   //   const schemaDefinition = `bytes32 ${propName}`
   //   const schemaDefinitionEncoded = ethers.encodeBytes32String(schemaDefinition)
@@ -271,6 +295,19 @@ export const deployToLocalHardhat = async (): Promise<ValuesStore> => {
 
 
 
+  // Executor-test aliases: seedSchemaUid = postSchemaUid; propertySchemaUid = first property from any model
+  const seedSchemaUid = postSchemaUid
+  let propertySchemaUid: string | undefined
+  if (modelUids && typeof modelUids === 'object') {
+    const firstModel = Object.values(modelUids)[0] as { properties?: Record<string, { schemaUid: string }> }
+    const firstProp = firstModel?.properties && Object.values(firstModel.properties)[0]
+    if (firstProp?.schemaUid) propertySchemaUid = firstProp.schemaUid
+  }
+  if (!propertySchemaUid) {
+    const valueSchemaUid = await getUid(schemaRegistry, 'string value')
+    propertySchemaUid = valueSchemaUid
+  }
+
   return {
     schemaRegistry,
     schemaRegistryAddress,
@@ -280,6 +317,8 @@ export const deployToLocalHardhat = async (): Promise<ValuesStore> => {
     identitySchemaUid,
     postSchemaUid,
     versionSchemaUid,
+    seedSchemaUid,
+    propertySchemaUid,
     seedProtocol,
     identitySeedUid,
     postSeedUid,

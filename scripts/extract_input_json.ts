@@ -1,11 +1,10 @@
-import {keccak256, toUtf8Bytes} from 'ethers'
 import fs from 'fs'
 import path                     from 'path'
 
 async function main() {
 
   const sourceDirectory = path.resolve('artifacts/build-info');
-  const targetDirectory = path.resolve('metadata');
+  const targetDirectory = path.resolve('verify');
 
   // Ensure the target directory exists
   if (!fs.existsSync(targetDirectory)) {
@@ -22,29 +21,18 @@ async function main() {
     // Read and parse JSON file
     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-    // Check for 'output.contracts' key in JSON data
-    if (data.output && data.output.contracts) {
-        for (const contractPath in data.output.contracts) {
-            for (const contractName in data.output.contracts[contractPath]) {
-                const contract = data.output.contracts[contractPath][contractName];
-                if (contract.metadata) {
-                    // Construct directory path for the contract metadata
-                    const dirPath = path.join(targetDirectory, contractPath, contractName);
+    // Check for 'input' key in JSON data
+    if (data.input) {
 
-                    // Ensure the directory exists
-                    if (!fs.existsSync(dirPath)) {
-                        fs.mkdirSync(dirPath, { recursive: true });
-                    }
+      const fileName = file.split('.')[0];
 
-                    // Define path for the metadata file
-                    const metadataFilePath = path.join(dirPath, `${contractName}_meta.json`);
 
-                    // Write metadata to file
-                    fs.writeFileSync(metadataFilePath, contract.metadata);
-                    console.log(`Metadata for ${contractName} written to ${metadataFilePath}`);
-                }
-            }
-        }
+      // Define path for the input json file
+      const inputJsonFilePath = path.join(targetDirectory, `${fileName}_input.json`);
+
+      // Write input json to file
+      fs.writeFileSync(inputJsonFilePath, JSON.stringify(data.input));
+      console.log(`Input JSON for verificatino written to ${inputJsonFilePath}`);
     }
     }
 

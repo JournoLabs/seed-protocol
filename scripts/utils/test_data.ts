@@ -60,7 +60,7 @@ export const testPublishRequestData = [
     propertiesToUpdate : [
       {
         propertySchemaUid   : '0x2d8192b87c17c5553f65917dd198b37e58b25b970036a14da9fcc821f358f369',
-        publishLocalId : '5itQvaCsSz',
+        publishIndex : 0,
       },
     ],
     listOfAttestations : [],

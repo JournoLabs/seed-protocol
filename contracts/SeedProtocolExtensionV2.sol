@@ -3,15 +3,14 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../interfaces/IEAS.sol";
-import "../interfaces/ISeedProtocolLegacy.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
+import "../interfaces/ISeedProtocol.sol";
 import "../thirdweb/AccountPermissions.sol";
 
 
-library SeedProtocolStorage {
-    /// @custom:storage-location erc7201:extensions.seedprotocol.storage
-    /// @dev keccak256(abi.encode(uint256(keccak256("extensions.seedprotocol.storage")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 public constant SEED_PROTOCOL_STORAGE_POSITION = keccak256(abi.encode(uint256(keccak256("extensions.seedprotocol.storage")) - 1)) & ~bytes32(uint256(0xff));
+library SeedProtocolStorageV2 {
+    /// @custom:storage-location erc7201:extensions.seedprotocol.v2.storage
+    /// @dev keccak256(abi.encode(uint256(keccak256("extensions.seedprotocol.v2.storage")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 public constant SEED_PROTOCOL_STORAGE_POSITION = keccak256(abi.encode(uint256(keccak256("extensions.seedprotocol.v2.storage")) - 1)) & ~bytes32(uint256(0xff));
 
     struct Data {
         /// @dev Local EAS contract reference
@@ -26,10 +25,11 @@ library SeedProtocolStorage {
     }
 }
 
-/// @notice Legacy SeedProtocolExtension using string-based publishLocalId (pre publishIndex optimization)
-contract SeedProtocolExtension is ISeedProtocolLegacy, OwnableUpgradeable, AccountPermissions {
+/// @notice Optimized SeedProtocolExtension using publishIndex (uint256) instead of publishLocalId (string)
+/// @dev Gas-optimized: O(1) index lookup instead of O(n) string comparison in triple-nested loop
+contract SeedProtocolExtensionV2 is ISeedProtocol, OwnableUpgradeable, AccountPermissions {
 
-    event CreatedAttestation(CreatedAttestationResultLegacy result);
+    event CreatedAttestation(CreatedAttestationResult result);
     event SeedPublished(bytes returnedDataFromEAS);
     event Log(string message);
 
@@ -76,7 +76,7 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, OwnableUpgradeable, Accou
 
         require(seedUid != bytes32(0), "Failed to create seed with EAS");
 
-        emit CreatedAttestation(CreatedAttestationResultLegacy({
+        emit CreatedAttestation(CreatedAttestationResult({
             schemaUid: schemaUid,
             attestationUid: seedUid
         }));
@@ -105,7 +105,7 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, OwnableUpgradeable, Accou
 
         require(versionUid != bytes32(0), "Failed to create version with EAS");
 
-        emit CreatedAttestation(CreatedAttestationResultLegacy({
+        emit CreatedAttestation(CreatedAttestationResult({
             schemaUid: versionSchemaUid,
             attestationUid: versionUid
         }));
@@ -113,7 +113,7 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, OwnableUpgradeable, Accou
         return versionUid;
     }
 
-    function publish(PublishRequestDataLegacy memory request) public payable returns (bytes32, bytes32) {
+    function publish(PublishRequestData memory request) public payable returns (bytes32, bytes32) {
 
         bytes32 seedUid = request.seedUid;
         bytes32 versionUid = request.versionUid;
@@ -129,11 +129,11 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, OwnableUpgradeable, Accou
         return (seedUid, versionUid);
     }
 
-    function multiPublish(PublishRequestDataLegacy[] memory requests) public payable returns (bytes32[] memory) {
+    function multiPublish(PublishRequestData[] memory requests) public payable returns (bytes32[] memory) {
         bytes32[] memory result = new bytes32[](requests.length);
 
         for (uint i = 0; i < requests.length; i++) {
-            PublishRequestDataLegacy memory requestToPublish = requests[i];
+            PublishRequestData memory requestToPublish = requests[i];
             // Each publish call can return a list of properties that need to be updated
             (bytes32 newSeedUid, bytes32 newVersionUid) = publish(requestToPublish);
 
@@ -146,19 +146,15 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, OwnableUpgradeable, Accou
             }
 
             // Update other requests that have properties that need to reference the newSeedUid
-            PropertyToUpdateWithSeedLegacy[] memory propertiesToUpdate = requestToPublish.propertiesToUpdate;
-            // For each property, we find the corresponding request and update the property's value as the seedUid
+            // Gas-optimized: O(1) index lookup instead of O(n) string comparison
+            PropertyToUpdateWithSeed[] memory propertiesToUpdate = requestToPublish.propertiesToUpdate;
             for (uint l = 0; l < propertiesToUpdate.length; l++) {
-                PropertyToUpdateWithSeedLegacy memory propertyToUpdate = propertiesToUpdate[l];
-                for (uint m = 0; m < requests.length; m++) {
-                    PublishRequestDataLegacy memory targetForUpdate = requests[m];
-                    if (Strings.equal(targetForUpdate.localId, propertyToUpdate.publishLocalId)) {
-                        for (uint n = 0; n < targetForUpdate.listOfAttestations.length; n++) {
-                            MultiAttestationRequest memory attestationRequest = targetForUpdate.listOfAttestations[n];
-                            if (attestationRequest.schema == propertyToUpdate.propertySchemaUid) {
-                                attestationRequest.data[0].data = abi.encode(newSeedUid);
-                            }
-                        }
+                PropertyToUpdateWithSeed memory propertyToUpdate = propertiesToUpdate[l];
+                uint256 idx = propertyToUpdate.publishIndex;
+                require(idx < requests.length, "Invalid publish index");
+                for (uint n = 0; n < requests[idx].listOfAttestations.length; n++) {
+                    if (requests[idx].listOfAttestations[n].schema == propertyToUpdate.propertySchemaUid) {
+                        requests[idx].listOfAttestations[n].data[0].data = abi.encode(newSeedUid);
                     }
                 }
             }
@@ -185,14 +181,15 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, OwnableUpgradeable, Accou
 
             emit SeedPublished(returnedData);
 
+            result[i] = newSeedUid;
         }
 
         return result;
     }
 
     /// @dev Returns the SeedProtocol storage.
-    function _seedProtocolStorage() internal pure returns (SeedProtocolStorage.Data storage data) {
-        data = SeedProtocolStorage.data();
+    function _seedProtocolStorage() internal pure returns (SeedProtocolStorageV2.Data storage data) {
+        data = SeedProtocolStorageV2.data();
         return data;
     }
 

@@ -71,6 +71,7 @@ struct MultiDelegatedRevocationRequest {
     Signature[] signatures; // The ECDSA signatures data. Please note that the signatures are assumed to be signed with increasing nonces.
     address revoker; // The revoking account.
     uint64 deadline; // The deadline of the signature/request.
+}
 
 interface IEAS_SeedProtocol {
 
