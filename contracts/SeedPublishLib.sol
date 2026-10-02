@@ -23,15 +23,18 @@ library SeedPublishLib {
     error PropertyToUpdateNotFound(uint256 requestIndex, uint256 targetIndex, bytes32 propertySchemaUid);
 
     /**
-     * @dev Points every property attestation at `versionUid` and forces it revocable, so an
-     *      account owner can always revoke what was published on their behalf (including by
-     *      a delegate holding a session key).
+     * @dev Points property attestations without a client-supplied `refUID` at `versionUid`
+     *      (a non-zero `refUID` from the client is preserved), and forces every one revocable
+     *      so an account owner can always revoke what was published on their behalf
+     *      (including by a delegate holding a session key).
      */
     function prepareProperties(MultiAttestationRequest[] memory listOfAttestations, bytes32 versionUid) internal pure {
         for (uint256 j = 0; j < listOfAttestations.length; j++) {
             AttestationRequestData[] memory data = listOfAttestations[j].data;
             for (uint256 k = 0; k < data.length; k++) {
-                data[k].refUID = versionUid;
+                if (data[k].refUID == bytes32(0)) {
+                    data[k].refUID = versionUid;
+                }
                 data[k].revocable = true;
             }
         }

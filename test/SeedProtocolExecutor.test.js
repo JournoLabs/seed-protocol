@@ -709,6 +709,23 @@ describe("SeedProtocolExecutor", function () {
     });
   });
 
+  describe("Client refUID", function () {
+    it("preserves a refUID the client set instead of pointing it at the new version", async function () {
+      const [earlierSeed] = await getEASAttestedUids(
+        await (await callExecutorFromAccount("multiPublish", [[requestWithProperty()]])).wait()
+      );
+
+      const request = requestWithProperty();
+      request.listOfAttestations[0].data[0].refUID = earlierSeed;
+      const [, versionUid, propertyUid] = await getEASAttestedUids(
+        await (await callExecutorFromAccount("multiPublish", [[request]])).wait()
+      );
+
+      expect((await eas.getAttestation(propertyUid)).refUID).to.equal(earlierSeed);
+      expect(versionUid).to.not.equal(earlierSeed);
+    });
+  });
+
   describe("Revocability (D7a)", function () {
     it("forces seed and property attestations revocable even when the request asks otherwise", async function () {
       const tx = await callExecutorFromAccount("multiPublish", [[requestWithProperty({ revocable: false })]]);

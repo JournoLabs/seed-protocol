@@ -108,6 +108,18 @@ for (const { label, fixture, reference } of VARIANTS) {
       }
     });
 
+    it("preserves a refUID the client set instead of pointing it at the new version", async function () {
+      const setup = await loadFixture(fixture);
+      const [earlier] = uidsByRequest(setup, await publish(setup, buildBatch(setup, reference, 1, [])));
+
+      const batch = buildBatch(setup, reference, 1, []);
+      batch[0].listOfAttestations[0].data[0].refUID = earlier.seed;
+      const [published] = uidsByRequest(setup, await publish(setup, batch));
+
+      expect((await setup.eas.getAttestation(published.property)).refUID).to.equal(earlier.seed);
+      expect(published.version).to.not.equal(earlier.seed);
+    });
+
     it("rejects referencing a request that was already attested", async function () {
       const setup = await loadFixture(fixture);
       const [requestIndex, targetIndex] = await expectCustomError(
