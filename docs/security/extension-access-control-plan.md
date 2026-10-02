@@ -14,7 +14,7 @@ Scope: OP Sepolia only, test users only. No forged-attestation cleanup is requir
 | F5 | Low | same | `createSeed`, `createVersion` and `publish` are `public` with no auth. They aren't routed today but would be exploitable if ever added to the router. |
 | F6 | Medium | `SeedProtocolExecutor` | `msg.value` mishandling. The executor keeps the ETH sent to it (no withdraw), then tells the account to send `msg.value` again from its own balance on every `createSeed`/`createVersion`/`multiAttest`. The account pays N× value and ETH gets stuck in the module. |
 | F7 | — | thirdweb ManagedAccount | No `executeFromExecutor`, so `SeedProtocolExecutor` can't be used with existing accounts. |
-| F8 | — | `SeedProtocolExecutor` | No revocation support (`revoke`/`multiRevoke`). |
+| F8 | — | `SeedProtocolExecutor` | No revocation support (`revoke`/`multiRevoke`). **Declined:** see D8. |
 | F9 | Low | both | Cross-reference robustness: `propertiesToUpdate` pointing at an already-processed request is a silent no-op, and an empty `data[]` panics with index-out-of-bounds instead of a clear error. |
 
 ## 2. Design decisions
@@ -59,14 +59,13 @@ This also fixes F3: no per-account initialization step. Changing EAS means deplo
 Constraints on `executeFromExecutor`:
 - **single call type** and default exec type only;
 - **target == EAS** (immutable);
-- **selector allowlist**: `attest`, `multiAttest`, `revoke`, `multiRevoke`;
+- **selector allowlist**: `attest`, `multiAttest` only (no revocation, per D8);
 - **value == msg.value**, so the account never spends its own balance on the executor's behalf.
 
-The trust model matches D2: a session key that can reach the executor can attest (and revoke) as the account, and nothing else.
+The trust model matches D2: a session key that can reach the executor can attest as the account, and nothing else.
 
 ### D6: Executor fixes
 - **`msg.value`**: received exactly once. It's forwarded via `executeFromExecutor{value: …}` on the first EAS call that needs it, and 0 on the rest. Internal `_createSeed`/`_createVersion` take an explicit value. The module never holds ETH: it asserts its balance is unchanged at the end, and has no `receive`.
-- **Revocation**: add `revoke(RevocationRequest)` and `multiRevoke(MultiRevocationRequest[])`, routed through the same account → EAS path. EAS itself enforces that only the attester can revoke.
 
 ### D7: Delegated publishing (session keys) is a hard requirement
 Users must be able to let a third party publish as their account, and revoke that at any time. This is thirdweb's native session-key mechanism, and the fix keeps it:
@@ -85,7 +84,16 @@ Known scoping limits of an account-targeted session key:
 
 Executor-path notes for step 8 (as implemented in step 7):
 - `onInstall`/`onUninstall` only take effect when the account's `isModuleInstalled(2, executor, "")` already reports the module installed (install) or no longer installed (uninstall). This stops a session key that targets the executor from wiping or re-pointing its config. The Router extension must therefore expose `isModuleInstalled`, mark the module installed *before* calling `onInstall`, and mark it uninstalled *before* calling `onUninstall`.
-- `revoke`/`multiRevoke` act on the account's own attestations. A session key allowed to target the executor can therefore revoke *all* of the account's revocable attestations, including the owner's. Admins don't need the executor to revoke (`execute(EAS, revoke)` works), so this power mainly reaches delegates. Grant executor targets to third parties accordingly. If that's too broad, drop these two functions (isolated in their own commit).
+
+### D8: Delegates cannot revoke
+No delegate-reachable path may revoke attestations. The executor has no `revoke`/`multiRevoke`, and the step 8 Router extension won't let executors call EAS's revocation functions.
+
+Why not "delegates may revoke only what they published": nothing on-chain records *which signer* published an attestation.
+- EAS records the account as the attester.
+- Under a session key, the extension and the executor both see only `msg.sender == account`. thirdweb's `validateUserOp` checks the signer but doesn't pass it on to the execution phase.
+- An identity supplied in calldata is just a claim, so a delegate could pass the owner's.
+
+So any revoke function a delegate can reach could revoke **all** of the account's revocable attestations, owner's included. Owners already revoke directly with `execute(EAS, 0, revoke(...))` (tested in the access suite). An automation-friendly design is under future work.
 
 ## 3. Work breakdown (one commit each)
 
@@ -112,13 +120,13 @@ Executor-path notes for step 8 (as implemented in step 7):
    - `msg.value` is forwarded once.
 
    Port the gas tests to go through the account so the numbers include router overhead.
-7. **Executor fixes (F6, F8):**
-   - value accounting;
-   - `revoke`/`multiRevoke`;
-   - tests that the account balance changes by exactly `msg.value` and the executor balance stays 0;
-   - revocation round-trip.
+7. **Executor fixes (F6), done:**
+   - value accounting: the account balance changes by exactly `msg.value` and the executor balance stays 0; unused value reverts;
+   - `onInstall`/`onUninstall` guards against session-key griefing;
+   - parity with the extensions via `SeedPublishLib` (forced revocability, cross-reference rules);
+   - no `revoke`/`multiRevoke` (D8).
 
-   Update `MockERC7579Account` to forward value.
+   `MockERC7579Account` already forwarded value correctly, so it needed no change.
 8. **`SeedExecutorRouterExtension` (F7)**, with tests:
    - only the installed module can call `executeFromExecutor`;
    - wrong target, disallowed selector, batch mode and value mismatch each revert;
@@ -147,6 +155,7 @@ Old `eas` values left in account storage are harmless leftovers.
 - ManagedAccountFactory address on OP Sepolia, and which key holds `EXTENSION_ROLE`.
 - Which `multiPublish` variant the client calls today (legacy string `publishLocalId` or V2 `publishIndex`). Both selectors can be routed at once, but `getEas` can only belong to one extension.
 - How the client invokes `multiPublish` today: admin EOA direct, UserOp `execute(account, …)`, or session keys. This confirms D2 covers every live path.
+- How the client orders requests in a batch. A request whose seed UID another request needs must come **before** that request (or be the same request). Backward references now revert with `PublishTargetAlreadyAttested`; the 2024 sample in `scripts/utils/test_data.ts` uses the backward order.
 
 ## 6. Future work (not in this branch)
 - **(b) Per-account schema allowlist for `multiPublish`.** The admin manages a set of schema UIDs that `multiPublish` may attest; an empty set means "allow all" so existing accounts keep working. Limits what a delegate can publish, not just whether the owner can undo it. Notes:
@@ -155,3 +164,4 @@ Old `eas` values left in account storage are harmless leftovers.
   - Costs ~2.1k gas per distinct schema per publish (cold SLOAD).
   - Upkeep grows with how often apps introduce new property schemas.
 - **Per-delegate scoping.** Separate permissions per third party (schemas, expiry) need a different model: the delegate calls the extension from its own address, and the extension checks an owner-managed delegate registry. Worth it only if per-delegate limits become a product requirement.
+- **Delegate revocation for automation (D8).** "A delegate may revoke only what it published" needs the contracts to know which delegate is acting. That means the per-delegate model above: the delegate calls the account from its own address, the extension checks an owner-managed registry, and it records the publishing delegate per attestation UID. Revoke is then allowed only on that delegate's records. Cost: roughly 20k gas per recorded attestation, plus a different delegation flow (no session-key UserOps). Revisit if users ask for automated revocation.

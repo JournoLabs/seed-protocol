@@ -738,78 +738,13 @@ describe("SeedProtocolExecutor", function () {
     });
   });
 
-  describe("Revocation (F8)", function () {
-    async function publishWithProperty() {
-      const tx = await callExecutorFromAccount("multiPublish", [[requestWithProperty()]]);
-      return getEASAttestedUids(await tx.wait()); // [seed, version, property]
-    }
-
-    it("revokes one of the account's attestations", async function () {
-      const [seedUid] = await publishWithProperty();
-      await (
-        await callExecutorFromAccount("revoke", [{ schema: SEED_SCHEMA_UID, data: { uid: seedUid, value: 0n } }])
-      ).wait();
-      expect((await eas.getAttestation(seedUid)).revocationTime).to.be.greaterThan(0n);
-    });
-
-    it("revokes attestations across schemas in one call", async function () {
-      const [seedUid, versionUid, propertyUid] = await publishWithProperty();
-      const request = (schema, uids) => ({ schema, data: uids.map((uid) => ({ uid, value: 0n })) });
-      await (
-        await callExecutorFromAccount("multiRevoke", [
-          [
-            request(SEED_SCHEMA_UID, [seedUid]),
-            request(VERSION_SCHEMA_UID, [versionUid]),
-            request(PROPERTY_SCHEMA_UID, [propertyUid]),
-          ],
-        ])
-      ).wait();
-      for (const uid of [seedUid, versionUid, propertyUid]) {
-        expect((await eas.getAttestation(uid)).revocationTime).to.be.greaterThan(0n);
-      }
-    });
-
-    it("can't revoke attestations made by someone else", async function () {
-      const tx = await eas.connect(otherUser).attest({
-        schema: SEED_SCHEMA_UID,
-        data: {
-          recipient: ethers.ZeroAddress,
-          expirationTime: 0n,
-          revocable: true,
-          refUID: ethers.ZeroHash,
-          data: ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [SEED_SCHEMA_UID]),
-          value: 0n,
-        },
-      });
-      const [foreignUid] = await getEASAttestedUids(await tx.wait());
-
-      await expect(
-        callExecutorFromAccount("revoke", [{ schema: SEED_SCHEMA_UID, data: { uid: foreignUid, value: 0n } }])
-      ).to.be.reverted;
-      expect((await eas.getAttestation(foreignUid)).revocationTime).to.equal(0n);
-    });
-
-    it("passes value through without the module keeping any", async function () {
-      const [seedUid] = await publishWithProperty();
-      const accountAddr = await account.getAddress();
-      const value = ethers.parseEther("1");
-      const accountBefore = await ethers.provider.getBalance(accountAddr);
-
-      await (
-        await callExecutorFromAccount("revoke", [{ schema: SEED_SCHEMA_UID, data: { uid: seedUid, value: 0n } }], value)
-      ).wait();
-
-      expect(await ethers.provider.getBalance(await executor.getAddress())).to.equal(0n);
-      expect(await ethers.provider.getBalance(accountAddr)).to.equal(accountBefore + value);
-    });
-
-    it("requires the module to be initialized for the account", async function () {
-      await account.uninstallModule(MODULE_TYPE_EXECUTOR, await executor.getAddress(), "0x");
-      await expectCustomError(
-        callExecutorFromAccount("revoke", [{ schema: SEED_SCHEMA_UID, data: { uid: ethers.ZeroHash, value: 0n } }]),
-        executor.interface,
-        "NotInitialized",
-      );
+  describe("Revocation (F8, declined)", function () {
+    it("does not expose revocation", async function () {
+      // Anything that can drive the module through the account, including a delegate's
+      // session key, would be able to revoke all of the account's attestations: the
+      // account can't tell which signer is behind a call. Owners revoke via execute(EAS, ...).
+      expect(executor.interface.getFunction("revoke")).to.equal(null);
+      expect(executor.interface.getFunction("multiRevoke")).to.equal(null);
     });
   });
 });
