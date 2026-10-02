@@ -34,6 +34,14 @@ abstract contract SeedProtocolExtensionBase {
     error Unauthorized(address caller);
     error InvalidEAS(address eas);
     error AttestationFailed(bytes32 schemaUid);
+    /// @dev A cross-reference (`propertiesToUpdate`) points outside the batch.
+    error PublishIndexOutOfBounds(uint256 targetIndex, uint256 length);
+    error UnknownPublishLocalId(string publishLocalId);
+    /// @dev A cross-reference points at a request whose attestations were already submitted,
+    ///      so the seed UID could never be written into them.
+    error PublishTargetAlreadyAttested(uint256 requestIndex, uint256 targetIndex);
+    /// @dev A cross-referenced property attestation has no data entry to write the seed UID into.
+    error EmptyAttestationData(uint256 targetIndex, bytes32 propertySchemaUid);
 
     IEAS private immutable _eas;
 
@@ -87,6 +95,29 @@ abstract contract SeedProtocolExtensionBase {
         }
 
         return (seedUid, versionUid);
+    }
+
+    /**
+     * @dev Writes `seedUid` into the first data entry of each `propertySchemaUid` attestation
+     *      of the request at `targetIndex`. Cross-references are applied before the current
+     *      request is attested, so targeting the current request (`targetIndex == requestIndex`)
+     *      or a later one works; targeting an earlier one would be silently lost, so it reverts.
+     */
+    function _setSeedReference(
+        MultiAttestationRequest[] memory targetAttestations,
+        uint256 requestIndex,
+        uint256 targetIndex,
+        bytes32 propertySchemaUid,
+        bytes32 seedUid
+    ) internal pure {
+        if (targetIndex < requestIndex) revert PublishTargetAlreadyAttested(requestIndex, targetIndex);
+
+        for (uint256 n = 0; n < targetAttestations.length; n++) {
+            if (targetAttestations[n].schema == propertySchemaUid) {
+                if (targetAttestations[n].data.length == 0) revert EmptyAttestationData(targetIndex, propertySchemaUid);
+                targetAttestations[n].data[0].data = abi.encode(seedUid);
+            }
+        }
     }
 
     /**

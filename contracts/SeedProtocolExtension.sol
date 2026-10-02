@@ -38,17 +38,20 @@ contract SeedProtocolExtension is ISeedProtocolLegacy, SeedProtocolExtensionBase
             // For each property, we find the corresponding request and update the property's value as the seedUid
             for (uint l = 0; l < propertiesToUpdate.length; l++) {
                 PropertyToUpdateWithSeedLegacy memory propertyToUpdate = propertiesToUpdate[l];
+                bool found = false;
                 for (uint m = 0; m < requests.length; m++) {
-                    PublishRequestDataLegacy memory targetForUpdate = requests[m];
-                    if (Strings.equal(targetForUpdate.localId, propertyToUpdate.publishLocalId)) {
-                        for (uint n = 0; n < targetForUpdate.listOfAttestations.length; n++) {
-                            MultiAttestationRequest memory attestationRequest = targetForUpdate.listOfAttestations[n];
-                            if (attestationRequest.schema == propertyToUpdate.propertySchemaUid) {
-                                attestationRequest.data[0].data = abi.encode(newSeedUid);
-                            }
-                        }
+                    if (Strings.equal(requests[m].localId, propertyToUpdate.publishLocalId)) {
+                        found = true;
+                        _setSeedReference(
+                            requests[m].listOfAttestations,
+                            i,
+                            m,
+                            propertyToUpdate.propertySchemaUid,
+                            newSeedUid
+                        );
                     }
                 }
+                if (!found) revert UnknownPublishLocalId(propertyToUpdate.publishLocalId);
             }
 
             value = _attestProperties(requestToPublish.listOfAttestations, newVersionUid, value);

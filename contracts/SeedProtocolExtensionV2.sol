@@ -39,12 +39,14 @@ contract SeedProtocolExtensionV2 is ISeedProtocol, SeedProtocolExtensionBase {
             for (uint l = 0; l < propertiesToUpdate.length; l++) {
                 PropertyToUpdateWithSeed memory propertyToUpdate = propertiesToUpdate[l];
                 uint256 idx = propertyToUpdate.publishIndex;
-                require(idx < requests.length, "Invalid publish index");
-                for (uint n = 0; n < requests[idx].listOfAttestations.length; n++) {
-                    if (requests[idx].listOfAttestations[n].schema == propertyToUpdate.propertySchemaUid) {
-                        requests[idx].listOfAttestations[n].data[0].data = abi.encode(newSeedUid);
-                    }
-                }
+                if (idx >= requests.length) revert PublishIndexOutOfBounds(idx, requests.length);
+                _setSeedReference(
+                    requests[idx].listOfAttestations,
+                    i,
+                    idx,
+                    propertyToUpdate.propertySchemaUid,
+                    newSeedUid
+                );
             }
 
             value = _attestProperties(requestToPublish.listOfAttestations, newVersionUid, value);
