@@ -32,7 +32,7 @@ const VARIANTS = [
  * `count` requests, each creating a seed + version and one `bytes32 ref` property.
  * `refs` is a list of `{ from, to }`: request `from`'s new seed UID goes into request `to`'s ref property.
  */
-function buildBatch(setup, reference, count, refs, { emptyDataAt = [] } = {}) {
+function buildBatch(setup, reference, count, refs, { emptyDataAt = [], refSchema } = {}) {
   const schema = setup.propertySchemaUid2; // "bytes32 ref"
   return Array.from({ length: count }, (_, i) => ({
     localId: `request-${i}`,
@@ -58,7 +58,7 @@ function buildBatch(setup, reference, count, refs, { emptyDataAt = [] } = {}) {
             ],
       },
     ],
-    propertiesToUpdate: refs.filter((r) => r.from === i).map((r) => reference(r.to, schema)),
+    propertiesToUpdate: refs.filter((r) => r.from === i).map((r) => reference(r.to, refSchema ?? schema)),
   }));
 }
 
@@ -128,6 +128,19 @@ for (const { label, fixture, reference } of VARIANTS) {
       );
       expect(targetIndex).to.equal(1n);
       expect(schema).to.equal(setup.propertySchemaUid2);
+    });
+
+    it("rejects a reference to a property schema the target request doesn't contain", async function () {
+      const setup = await loadFixture(fixture);
+      const missingSchema = setup.propertySchemaUid3; // registered, but not in any request
+      const [requestIndex, targetIndex, schema] = await expectCustomError(
+        publish(setup, buildBatch(setup, reference, 2, [{ from: 0, to: 1 }], { refSchema: missingSchema })),
+        setup.account.interface,
+        "PropertyToUpdateNotFound",
+      );
+      expect(requestIndex).to.equal(0n);
+      expect(targetIndex).to.equal(1n);
+      expect(schema).to.equal(missingSchema);
     });
   });
 }

@@ -18,6 +18,9 @@ library SeedPublishLib {
     error PublishTargetAlreadyAttested(uint256 requestIndex, uint256 targetIndex);
     /// @dev A cross-referenced property attestation has no data entry to write the seed UID into.
     error EmptyAttestationData(uint256 targetIndex, bytes32 propertySchemaUid);
+    /// @dev The target request has no attestation with the cross-referenced property schema,
+    ///      so the seed UID would silently not be written anywhere.
+    error PropertyToUpdateNotFound(uint256 requestIndex, uint256 targetIndex, bytes32 propertySchemaUid);
 
     /**
      * @dev Points every property attestation at `versionUid` and forces it revocable, so an
@@ -39,6 +42,7 @@ library SeedPublishLib {
      *      of the request at `targetIndex`. Cross-references are applied before the current
      *      request is attested, so targeting the current request (`targetIndex == requestIndex`)
      *      or a later one works; targeting an earlier one would be silently lost, so it reverts.
+     *      So does a reference that matches no attestation in the target request.
      */
     function setSeedReference(
         MultiAttestationRequest[] memory targetAttestations,
@@ -49,12 +53,15 @@ library SeedPublishLib {
     ) internal pure {
         if (targetIndex < requestIndex) revert PublishTargetAlreadyAttested(requestIndex, targetIndex);
 
+        bool found = false;
         for (uint256 n = 0; n < targetAttestations.length; n++) {
             if (targetAttestations[n].schema == propertySchemaUid) {
                 if (targetAttestations[n].data.length == 0) revert EmptyAttestationData(targetIndex, propertySchemaUid);
                 targetAttestations[n].data[0].data = abi.encode(seedUid);
+                found = true;
             }
         }
+        if (!found) revert PropertyToUpdateNotFound(requestIndex, targetIndex, propertySchemaUid);
     }
 
     /// @dev Reverts unless `targetIndex` is inside a batch of `length` requests.

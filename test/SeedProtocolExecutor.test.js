@@ -736,6 +736,23 @@ describe("SeedProtocolExecutor", function () {
       expect(requestIndex).to.equal(1n);
       expect(targetIndex).to.equal(0n);
     });
+
+    it("rejects a reference to a property schema the target request doesn't contain", async function () {
+      const missingSchema = ethers.id("not-in-the-batch");
+      const referrer = {
+        ...requestWithProperty(),
+        localId: "referrer",
+        propertiesToUpdate: [{ publishIndex: 1, propertySchemaUid: missingSchema }],
+      };
+      const [requestIndex, targetIndex, schema] = await expectCustomError(
+        callExecutorFromAccount("multiPublish", [[referrer, requestWithProperty()]]),
+        executor.interface,
+        "PropertyToUpdateNotFound",
+      );
+      expect(requestIndex).to.equal(0n);
+      expect(targetIndex).to.equal(1n);
+      expect(schema).to.equal(missingSchema);
+    });
   });
 
   describe("Revocation (F8, declined)", function () {

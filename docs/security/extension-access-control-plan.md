@@ -107,7 +107,7 @@ So any revoke function a delegate can reach could revoke **all** of the account'
 2. **Regression tests for F1/F2 (expected to fail).** A stranger calling `account.multiPublish` and `account.setEas` succeeds today. Commit these as `it.skip`/pending, then flip them on in step 3.
 3. **`SeedProtocolExtensionBase` + hardened legacy extension (fixes F1–F5).** Includes the D2 auth on `multiPublish`, the D1 EAS immutable, removal of `setEas`, and the internal helpers.
 4. **Port `SeedProtocolExtensionV2` onto the base.**
-5. **Cross-reference hardening (F9).** Revert with a clear error when `propertiesToUpdate` targets an already-attested request (`idx < i`; `idx == i` is a valid self-reference because cross-references are applied before the current request is attested), and require `data.length > 0` before writing `data[0]`. Legacy gets the same checks on its string match.
+5. **Cross-reference hardening (F9).** Revert with a clear error when `propertiesToUpdate` targets an already-attested request (`idx < i`; `idx == i` is a valid self-reference because cross-references are applied before the current request is attested), and require `data.length > 0` before writing `data[0]`. Legacy gets the same checks on its string match. Also revert with `PropertyToUpdateNotFound` when a reference matches no attestation in the target request (done after step 7; was a silent no-op).
 6. **Extension test suite against the harness:**
    - stranger reverts;
    - admin EOA works;
