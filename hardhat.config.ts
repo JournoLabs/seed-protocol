@@ -87,6 +87,16 @@ export default defineConfig({
       type: 'http',
       url: 'http://127.0.0.1:8545',
     },
+    // OP Sepolia state under its own chain id, so a transaction that misses the local
+    // config can't be valid on the real chain (docs/local-twin-plan.md, T1).
+    op_sepolia_twin: {
+      type: 'edr-simulated',
+      chainType: 'op',
+      chainId: 31337,
+      forking: {
+        url: configVariable('OPTIMISM_SEPOLIA_RPC_URL'),
+      },
+    },
     // OP Sepolia state, simulated. rehearse:op-sepolia runs `hardhat node` on it.
     optimism_sepolia_fork: {
       type: 'edr-simulated',
