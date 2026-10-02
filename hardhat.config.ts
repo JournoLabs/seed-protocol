@@ -1,4 +1,5 @@
-import { HardhatUserConfig } from 'hardhat/config'
+import { HardhatUserConfig, subtask } from 'hardhat/config'
+import { TASK_COMPILE_GET_REMAPPINGS } from 'hardhat/builtin-tasks/task-names'
 import '@nomiclabs/hardhat-ethers'
 import '@nomicfoundation/hardhat-toolbox'
 import 'hardhat-ethernal'
@@ -6,6 +7,16 @@ import '@openzeppelin/hardhat-upgrades'
 
 import dotenv from 'dotenv'
 dotenv.config()
+
+// thirdweb's dynamic-contracts BaseRouter uses a Foundry-style `lib/` import.
+// Map it into node_modules so the test harness can compile ManagedAccountFactory.
+const REMAPPINGS: Record<string, string> = {
+  'lib/sstore2/': '@thirdweb-dev/dynamic-contracts/lib/sstore2/',
+}
+
+subtask(TASK_COMPILE_GET_REMAPPINGS).setAction(async (_, __, runSuper) => {
+  return { ...(await runSuper()), ...REMAPPINGS }
+})
 
 
 const config: HardhatUserConfig = {
