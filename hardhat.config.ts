@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { configVariable, defineConfig } from 'hardhat/config'
+import { configVariable, defineConfig, task } from 'hardhat/config'
 import hardhatToolboxMochaEthers from '@nomicfoundation/hardhat-toolbox-mocha-ethers'
 import { createxSalt } from './scripts/lib/createxSalt.js'
 
@@ -8,8 +8,16 @@ import { createxSalt } from './scripts/lib/createxSalt.js'
 // `ignition deploy` on public networks (input I7). Today that's DEV_KEY.
 const SEED_DEPLOYER = '0x00467fe2608Dff148C83009927E4e7234Bc4D84B'
 
+// Rollout scripts (docs/deploy-plan.md). Tasks rather than `hardhat run` so they take flags.
+const extensionPayload = task('seed:extension-payload', 'Print the Router Extension structs for a SeedProtocol deployment')
+  .addOption({ name: 'deploymentId', description: 'Ignition deployment id (default: chain-<chainId>)', defaultValue: '' })
+  .addOption({ name: 'metadataUri', description: 'metadataURI for every extension (input I5)', defaultValue: '' })
+  .setAction(() => import('./scripts/build_extension_payload.js'))
+  .build()
+
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
+  tasks: [extensionPayload],
   paths: {
     sources: './contracts',
   },
