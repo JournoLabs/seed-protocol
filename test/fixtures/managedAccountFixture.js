@@ -21,6 +21,14 @@ const SEED_EXTENSION_LEGACY = {
   functions: ["multiPublish", "getEas"],
 };
 
+/** SeedProtocolExtensionV2 (uint publishIndex cross-references), registered the same way. */
+const SEED_EXTENSION_V2 = {
+  name: "SeedProtocolExtensionV2",
+  contractName: "SeedProtocolExtensionV2",
+  constructorArgs: ({ easAddress }) => [easAddress],
+  functions: ["multiPublish", "getEas"],
+};
+
 const SIGNER_PERMISSION_TYPES = {
   SignerPermissionRequest: [
     { name: "signer", type: "address" },
@@ -229,10 +237,11 @@ function attestedEvents(eas, receipt) {
 }
 
 /**
- * One legacy (string localId) publish request: new seed + version, plus one
- * property attestation whose refUID the extension rewrites to the new version.
+ * One publish request: new seed + version, plus one property attestation whose
+ * refUID the extension rewrites to the new version. With no propertiesToUpdate it
+ * encodes for both the legacy (string localId) and V2 (publishIndex) ABIs.
  */
-function buildLegacyPublishRequests(setup, { revocable = true, propertyValue = "hello" } = {}) {
+function buildPublishRequests(setup, { revocable = true, propertyValue = "hello" } = {}) {
   return [
     {
       localId: "request-1",
@@ -344,10 +353,17 @@ async function managedAccountFixture() {
   return deployManagedAccountStack();
 }
 
+/** Same stack with SeedProtocolExtensionV2 registered instead. */
+async function managedAccountV2Fixture() {
+  return deployManagedAccountStack({ seedExtension: SEED_EXTENSION_V2 });
+}
+
 module.exports = {
   SEED_EXTENSION_LEGACY,
+  SEED_EXTENSION_V2,
   deployManagedAccountStack,
   managedAccountFixture,
+  managedAccountV2Fixture,
   buildExtension,
   mergeInterfaces,
   setSignerPermissions,
@@ -357,5 +373,5 @@ module.exports = {
   expectCustomError,
   expectUserOpRejected,
   attestedEvents,
-  buildLegacyPublishRequests,
+  buildPublishRequests,
 };

@@ -15,7 +15,7 @@ const {
   sendUserOp,
   expectUserOpRejected,
   attestedEvents,
-  buildLegacyPublishRequests,
+  buildPublishRequests,
 } = require("./fixtures/managedAccountFixture");
 
 async function readyFixture() {
@@ -23,7 +23,7 @@ async function readyFixture() {
 }
 
 function multiPublishCallData(setup) {
-  return setup.account.interface.encodeFunctionData("multiPublish", [buildLegacyPublishRequests(setup)]);
+  return setup.account.interface.encodeFunctionData("multiPublish", [buildPublishRequests(setup)]);
 }
 
 /** `account.execute(account, 0, multiPublish(...))` – the self-call path session keys use. */
@@ -68,7 +68,7 @@ describe("ManagedAccount harness", function () {
   describe("admin publishing", function () {
     it("admin EOA calling the account directly publishes as the account", async function () {
       const setup = await readyFixture();
-      const tx = await setup.account.connect(setup.accountAdmin).multiPublish(buildLegacyPublishRequests(setup));
+      const tx = await setup.account.connect(setup.accountAdmin).multiPublish(buildPublishRequests(setup));
       // seed + version + one property
       expectAllAttestedBy(setup, await tx.wait(), 3);
     });
