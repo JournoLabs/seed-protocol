@@ -12,5 +12,5 @@
     "types": ["node", "mocha"],
     "typeRoots": ["scripts/types", "node_modules/@types"]
   },
-  "include": ["hardhat.config.ts", "scripts/**/*", "test/**/*", "types/**/*"]
+  "include": ["hardhat.config.ts", "ignition/**/*", "scripts/**/*", "test/**/*", "types/**/*"]
 }
