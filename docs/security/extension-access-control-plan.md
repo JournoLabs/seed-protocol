@@ -156,7 +156,7 @@ Old `eas` values left in account storage are harmless leftovers.
 - ManagedAccountFactory address on OP Sepolia, and which key holds `EXTENSION_ROLE`.
 - Which `multiPublish` variant the client calls today (legacy string `publishLocalId` or V2 `publishIndex`). Both selectors can be routed at once, but `getEas` can only belong to one extension.
 - How the client invokes `multiPublish` today: admin EOA direct, UserOp `execute(account, …)`, or session keys. This confirms D2 covers every live path.
-- How the client orders requests in a batch. A request whose seed UID another request needs must come **before** that request (or be the same request). Backward references now revert with `PublishTargetAlreadyAttested`; the 2024 sample in `scripts/utils/test_data.ts` uses the backward order.
+- ~~How the client orders requests in a batch.~~ **Answered:** the client publishes referenced seeds first, then the requests whose properties reference them. That's what the contracts require (backward references revert with `PublishTargetAlreadyAttested`). The 2024 sample in `scripts/utils/test_data.ts` uses the backward order and gets fixed with the scripts in step 9.
 
 ## 6. Future work (not in this branch)
 - **(b) Per-account schema allowlist for `multiPublish`.** The admin manages a set of schema UIDs that `multiPublish` may attest; an empty set means "allow all" so existing accounts keep working. Limits what a delegate can publish, not just whether the owner can undo it. Notes:
