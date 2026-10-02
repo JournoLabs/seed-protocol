@@ -75,7 +75,7 @@ It targets the original POC contracts, isn't run by `npm test`, and its coverage
 ## 3. Work breakdown (one commit each)
 
 0. **Toolchain.**
-   - Update local Foundry to the current stable release (`foundryup --install stable`). The global install is the Dec 2023 build.
+   - Update local Foundry to the current stable release. The global install is the Dec 2023 build, and its `foundryup` predates `--install`, so update the installer first (`curl -L https://foundry.paradigm.xyz | bash`), then run `foundryup --install stable`.
    - Record the exact version in the README, and pin it in CI in step 8.
 
 1. **Foundry scaffold alongside Hardhat.**
