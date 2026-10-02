@@ -7,7 +7,6 @@
  *   - the admin can revoke that session key at any time
  */
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
 const { loadFixture, time } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {
   managedAccountFixture,
@@ -20,10 +19,7 @@ const {
 } = require("./fixtures/managedAccountFixture");
 
 async function readyFixture() {
-  const setup = await loadFixture(managedAccountFixture);
-  // The currently deployed extension keeps EAS in account storage, so it must be set first.
-  await (await setup.account.connect(setup.accountAdmin).setEas(setup.easAddress)).wait();
-  return setup;
+  return loadFixture(managedAccountFixture);
 }
 
 function multiPublishCallData(setup) {
@@ -62,10 +58,10 @@ describe("ManagedAccount harness", function () {
       expect(await account.isAdmin(stranger.address)).to.equal(false);
     });
 
-    it("stores EAS in account storage, not the implementation's", async function () {
+    it("serves the constructor-pinned EAS with no per-account setup", async function () {
       const setup = await readyFixture();
       expect(await setup.account.getEas()).to.equal(setup.easAddress);
-      expect(await setup.seedImpl.getEas()).to.equal(ethers.ZeroAddress);
+      expect(await setup.seedImpl.getEas()).to.equal(setup.easAddress);
     });
   });
 

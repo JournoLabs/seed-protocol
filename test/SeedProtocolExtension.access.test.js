@@ -1,6 +1,9 @@
 /**
  * Access control for SeedProtocolExtension when routed through a thirdweb
- * ManagedAccount. See docs/security/extension-access-control-plan.md (F1, F2).
+ * ManagedAccount. See docs/security/extension-access-control-plan.md (F1, F2, D1, D2, D7).
+ *
+ * Allowed publishing paths (admin EOA, admin UserOp, session-key UserOp) are
+ * covered in ManagedAccountHarness.test.js; this file covers what must be refused.
  */
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
@@ -8,73 +11,141 @@ const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helper
 const {
   managedAccountFixture,
   grantSessionKey,
+  revokeSessionKey,
   sendUserOp,
+  expectCustomError,
   attestedEvents,
   buildLegacyPublishRequests,
 } = require("./fixtures/managedAccountFixture");
 
-async function readyFixture() {
-  const setup = await loadFixture(managedAccountFixture);
-  await (await setup.account.connect(setup.accountAdmin).setEas(setup.easAddress)).wait();
-  return setup;
+const LEGACY_SET_EAS = new ethers.Interface(["function setEas(address _eas) payable returns (string)"]);
+
+function revokeCallData(eas, schema, uid) {
+  return eas.interface.encodeFunctionData("revoke", [{ schema, data: { uid, value: 0n } }]);
 }
 
 describe("SeedProtocolExtension access control", function () {
-  /**
-   * Demonstrates F1/F2 against the extension as currently deployed. These pass
-   * today and are removed by the fix; the pending block below replaces them.
-   */
-  describe("current behaviour (vulnerable)", function () {
-    it("F1: a stranger can publish a non-revocable attestation as the account", async function () {
-      const setup = await readyFixture();
-      const forged = buildLegacyPublishRequests(setup, { revocable: false, propertyValue: "forged" });
-
-      const receipt = await (await setup.account.connect(setup.stranger).multiPublish(forged)).wait();
-      const attested = attestedEvents(setup.eas, receipt);
-
-      expect(attested).to.have.length(3);
-      for (const { attester } of attested) {
-        expect(attester).to.equal(setup.accountAddress);
-      }
-
-      // The attacker-supplied property is permanent and carries their data.
-      // (Version attestations are always revocable; the seed and properties follow the request.)
-      const property = attested.find((a) => a.schema === setup.propertySchemaUid);
-      const onChain = await setup.eas.getAttestation(property.uid);
-      expect(onChain.revocable).to.equal(false);
-      expect(ethers.AbiCoder.defaultAbiCoder().decode(["string"], onChain.data)[0]).to.equal("forged");
-      const seed = attested.find((a) => a.schema === setup.seedSchemaUid);
-      expect((await setup.eas.getAttestation(seed.uid)).revocable).to.equal(false);
+  describe("F1: multiPublish", function () {
+    it("rejects a stranger", async function () {
+      const setup = await loadFixture(managedAccountFixture);
+      const [caller] = await expectCustomError(
+        setup.account.connect(setup.stranger).multiPublish(buildLegacyPublishRequests(setup)),
+        setup.account.interface,
+        "Unauthorized",
+      );
+      expect(caller).to.equal(setup.stranger.address);
     });
 
-    it("F2: a stranger can redirect the account's EAS", async function () {
-      const setup = await readyFixture();
-      await (await setup.account.connect(setup.stranger).setEas(setup.stranger.address)).wait();
-      expect(await setup.account.getEas()).to.equal(setup.stranger.address);
-    });
-
-    it("F2: a publishing session key can also redirect the account's EAS", async function () {
-      const setup = await readyFixture();
+    it("rejects a session-key holder calling the account directly instead of through a UserOp", async function () {
+      const setup = await loadFixture(managedAccountFixture);
       await grantSessionKey(setup.account, setup.accountAdmin, setup.delegate.address, {
         approvedTargets: [setup.accountAddress],
       });
-      const setEasCallData = setup.account.interface.encodeFunctionData("setEas", [setup.delegate.address]);
-      const { success } = await sendUserOp({
-        ...setup,
-        signer: setup.delegate,
-        callData: setup.account.interface.encodeFunctionData("execute", [setup.accountAddress, 0n, setEasCallData]),
-      });
-      expect(success).to.equal(true);
-      expect(await setup.account.getEas()).to.equal(setup.delegate.address);
+      const [caller] = await expectCustomError(
+        setup.account.connect(setup.delegate).multiPublish(buildLegacyPublishRequests(setup)),
+        setup.account.interface,
+        "Unauthorized",
+      );
+      expect(caller).to.equal(setup.delegate.address);
+    });
+
+    it("rejects a stranger going through execute", async function () {
+      const setup = await loadFixture(managedAccountFixture);
+      const inner = setup.account.interface.encodeFunctionData("multiPublish", [buildLegacyPublishRequests(setup)]);
+      await expect(
+        setup.account.connect(setup.stranger).execute(setup.accountAddress, 0n, inner),
+      ).to.be.revertedWith("Account: not admin or EntryPoint.");
+    });
+
+    it("can't be used by calling the implementation directly", async function () {
+      const setup = await loadFixture(managedAccountFixture);
+      await expect(
+        setup.seedImpl.connect(setup.stranger).multiPublish(buildLegacyPublishRequests(setup)),
+      ).to.be.reverted;
     });
   });
 
-  // Enabled by the fix (plan step 3).
-  describe("after fix", function () {
-    it.skip("rejects multiPublish from a stranger");
-    it.skip("rejects multiPublish from a session key calling the account directly (not via execute)");
-    it.skip("does not route setEas at all");
-    it.skip("returns the constructor-pinned EAS from getEas without per-account setup");
-    it.skip("still allows admin EOA, admin UserOp and session-key publishing");
+  describe("F2 / D1: setEas", function () {
+    it("is not routed on the account", async function () {
+      const setup = await loadFixture(managedAccountFixture);
+      await expect(
+        setup.stranger.sendTransaction({
+          to: setup.accountAddress,
+          data: LEGACY_SET_EAS.encodeFunctionData("setEas", [setup.stranger.address]),
+        }),
+      ).to.be.revertedWith("Router: function does not exist.");
+      expect(await setup.account.getEas()).to.equal(setup.easAddress);
+    });
+
+    it("can't be reached by a publishing session key either", async function () {
+      const setup = await loadFixture(managedAccountFixture);
+      await grantSessionKey(setup.account, setup.accountAdmin, setup.delegate.address, {
+        approvedTargets: [setup.accountAddress],
+      });
+      const { success } = await sendUserOp({
+        ...setup,
+        signer: setup.delegate,
+        callData: setup.account.interface.encodeFunctionData("execute", [
+          setup.accountAddress,
+          0n,
+          LEGACY_SET_EAS.encodeFunctionData("setEas", [setup.delegate.address]),
+        ]),
+      });
+      expect(success).to.equal(false);
+      expect(await setup.account.getEas()).to.equal(setup.easAddress);
+    });
+
+    it("rejects deploying the extension with a non-contract EAS", async function () {
+      const setup = await loadFixture(managedAccountFixture);
+      const Extension = await ethers.getContractFactory("SeedProtocolExtension");
+      const [eas] = await expectCustomError(
+        Extension.deploy(setup.stranger.address),
+        Extension.interface,
+        "InvalidEAS",
+      );
+      expect(eas).to.equal(setup.stranger.address);
+    });
+  });
+
+  describe("D7(a): everything published is revocable by the owner", function () {
+    it("forces seed and property attestations revocable even when the request asks otherwise", async function () {
+      const setup = await loadFixture(managedAccountFixture);
+      const requests = buildLegacyPublishRequests(setup, { revocable: false });
+      const receipt = await (await setup.account.connect(setup.accountAdmin).multiPublish(requests)).wait();
+
+      const attested = attestedEvents(setup.eas, receipt);
+      expect(attested).to.have.length(3);
+      for (const { uid } of attested) {
+        expect((await setup.eas.getAttestation(uid)).revocable).to.equal(true);
+      }
+    });
+
+    it("lets the owner revoke what a delegate published, after revoking the delegate", async function () {
+      const setup = await loadFixture(managedAccountFixture);
+      await grantSessionKey(setup.account, setup.accountAdmin, setup.delegate.address, {
+        approvedTargets: [setup.accountAddress],
+      });
+
+      const publish = setup.account.interface.encodeFunctionData("multiPublish", [
+        buildLegacyPublishRequests(setup, { revocable: false, propertyValue: "spam" }),
+      ]);
+      const { success, receipt } = await sendUserOp({
+        ...setup,
+        signer: setup.delegate,
+        callData: setup.account.interface.encodeFunctionData("execute", [setup.accountAddress, 0n, publish]),
+      });
+      expect(success).to.equal(true);
+
+      await revokeSessionKey(setup.account, setup.accountAdmin, setup.delegate.address);
+
+      for (const { uid, schema } of attestedEvents(setup.eas, receipt)) {
+        await (
+          await setup.account
+            .connect(setup.accountAdmin)
+            .execute(setup.easAddress, 0n, revokeCallData(setup.eas, schema, uid))
+        ).wait();
+        expect((await setup.eas.getAttestation(uid)).revocationTime).to.be.greaterThan(0n);
+      }
+    });
   });
 });

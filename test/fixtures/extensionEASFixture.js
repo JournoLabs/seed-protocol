@@ -1,10 +1,9 @@
-const { ethers, upgrades } = require("hardhat");
-const { deployEASWithSchemas } = require("./easFixture");
+const { deployManagedAccountStack } = require("./managedAccountFixture");
 
 /**
- * Deploys SchemaRegistry, EAS, registers seed/version/property schemas,
- * deploys SeedProtocolExtension via proxy. For use with gas benchmarks and
- * extension tests (in-process, no node).
+ * SeedProtocolExtension routed through a real thirdweb ManagedAccount, for gas
+ * benchmarks. `extension` is the account (connected as its admin), so measured
+ * gas includes the Router + delegatecall overhead users actually pay.
  *
  * @returns {Promise<{
  *   eas: import("ethers").Contract,
@@ -22,22 +21,11 @@ const { deployEASWithSchemas } = require("./easFixture");
  * }>}
  */
 async function extensionEASFixture() {
-  const signers = await ethers.getSigners();
-  const owner = signers[0];
-
-  const { schemaRegistry, ...easSetup } = await deployEASWithSchemas();
-  const easAddress = await easSetup.eas.getAddress();
-
-  const Extension = await ethers.getContractFactory("SeedProtocolExtension");
-  const extension = await upgrades.deployProxy(Extension, [easAddress], {
-    initializer: "initialize",
-  });
-  await extension.waitForDeployment();
-
+  const setup = await deployManagedAccountStack();
   return {
-    ...easSetup,
-    extension,
-    owner,
+    ...setup,
+    extension: setup.account,
+    owner: setup.accountAdmin,
   };
 }
 

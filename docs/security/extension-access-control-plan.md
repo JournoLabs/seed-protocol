@@ -79,9 +79,9 @@ Users must be able to let a third party publish as their account, and revoke tha
 
 Known scoping limits of an account-targeted session key:
 - It can call anything that trusts self-calls. Today that's `multiPublish`, `setEas` (removed by D1) and thirdweb's `setContractURI` (metadata only). Any future routed function must not trust `address(this)` for admin-level actions.
-- It can attest **any schema with any data**, including non-revocable attestations, as the account. Revoking the key stops future publishes only. Optional hardening (decision needed):
-  - (a) force every attestation created via `multiPublish` to be revocable, so the owner can always clean up after a delegate;
-  - (b) a per-account schema allowlist the admin manages.
+- It can attest **any schema with any data** as the account. Revoking the key stops future publishes only, so:
+  - **Decided (a):** every attestation created through `multiPublish` (seed, version and properties) is forced revocable, so the owner can always revoke what a delegate published. The `seedIsRevocable` and per-attestation `revocable` request fields are ignored. This assumes every Seed/property schema is registered as revocable; EAS rejects revocable attestations on irrevocable schemas.
+  - Both (a) and the future (b) bind delegates only. An admin can always bypass `multiPublish` with `execute(EAS, …)`. A delegate can't, *provided its `approvedTargets` never include EAS or the `address(0)` wildcard*. The client's grant flow must enforce that.
 
 Executor-path note for step 8: a session key that targets the executor can call `executor.onUninstall()` with the account as `msg.sender`, which breaks publishing until it's reinstalled. Install and uninstall must only take effect when initiated by the router extension's admin-only functions.
 
@@ -97,7 +97,7 @@ Executor-path note for step 8: a session key that targets the executor can call 
 2. **Regression tests for F1/F2 (expected to fail).** A stranger calling `account.multiPublish` and `account.setEas` succeeds today. Commit these as `it.skip`/pending, then flip them on in step 3.
 3. **`SeedProtocolExtensionBase` + hardened legacy extension (fixes F1–F5).** Includes the D2 auth on `multiPublish`, the D1 EAS immutable, removal of `setEas`, and the internal helpers.
 4. **Port `SeedProtocolExtensionV2` onto the base.**
-5. **Cross-reference hardening (F9).** `require(idx > i)` (or a string-match equivalent for legacy) with a clear error, plus `require(data.length > 0)` before writing `data[0]`. *Behavior change:* forward references only. That's already the only meaningful case.
+5. **Cross-reference hardening (F9).** Revert with a clear error when `propertiesToUpdate` targets an already-attested request (`idx < i`; `idx == i` is a valid self-reference because cross-references are applied before the current request is attested), and require `data.length > 0` before writing `data[0]`. Legacy gets the same checks on its string match.
 6. **Extension test suite against the harness:**
    - stranger reverts;
    - admin EOA works;
@@ -145,3 +145,11 @@ Old `eas` values left in account storage are harmless leftovers.
 - ManagedAccountFactory address on OP Sepolia, and which key holds `EXTENSION_ROLE`.
 - Which `multiPublish` variant the client calls today (legacy string `publishLocalId` or V2 `publishIndex`). Both selectors can be routed at once, but `getEas` can only belong to one extension.
 - How the client invokes `multiPublish` today: admin EOA direct, UserOp `execute(account, …)`, or session keys. This confirms D2 covers every live path.
+
+## 6. Future work (not in this branch)
+- **(b) Per-account schema allowlist for `multiPublish`.** The admin manages a set of schema UIDs that `multiPublish` may attest; an empty set means "allow all" so existing accounts keep working. Limits what a delegate can publish, not just whether the owner can undo it. Notes:
+  - It's per account, not per delegate: the extension can't tell which session key signed a self-call.
+  - Its setters must be admin/EntryPoint-only (not self), like `installSeedExecutor`, so SDK admins need a direct call or a raw UserOp.
+  - Costs ~2.1k gas per distinct schema per publish (cold SLOAD).
+  - Upkeep grows with how often apps introduce new property schemas.
+- **Per-delegate scoping.** Separate permissions per third party (schemas, expiry) need a different model: the delegate calls the extension from its own address, and the extension checks an owner-managed delegate registry. Worth it only if per-delegate limits become a product requirement.

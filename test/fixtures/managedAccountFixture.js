@@ -13,12 +13,12 @@ const { deployEASWithSchemas } = require("./easFixture");
 const MAX_UINT128 = (1n << 128n) - 1n;
 const ONE_DAY = 24n * 60n * 60n;
 
-/** Mirrors how SeedProtocolExtension is registered on OP Sepolia today (scripts/get_extension_json.ts). */
-const SEED_EXTENSION_CURRENT = {
+/** SeedProtocolExtension as it should be registered on the factory (EAS pinned at construction). */
+const SEED_EXTENSION_LEGACY = {
   name: "SeedProtocolExtension",
   contractName: "SeedProtocolExtension",
-  constructorArgs: () => [],
-  functions: ["multiPublish", "setEas", "getEas"],
+  constructorArgs: ({ easAddress }) => [easAddress],
+  functions: ["multiPublish", "getEas"],
 };
 
 const SIGNER_PERMISSION_TYPES = {
@@ -170,27 +170,39 @@ async function sendUserOp({ entryPoint, account, signer, callData, bundler }) {
 }
 
 /**
- * Asserts a UserOperation was rejected during validation with an EntryPoint
- * `FailedOp` whose reason starts with `reasonPrefix` (e.g. "AA24" = bad signature
- * / signer not permitted, "AA22" = expired or not yet valid).
+ * Awaits `promise`, expects it to revert with custom error `errorName` from `iface`,
+ * and returns the decoded error args.
  *
- * Decodes the error manually: the installed hardhat-chai-matchers (v1) can't read
- * custom errors from ethers v6 contracts.
+ * Decodes manually: the installed hardhat-chai-matchers (v1) can't read custom
+ * errors from ethers v6 contracts.
  */
-async function expectUserOpRejected(promise, entryPoint, reasonPrefix) {
+async function expectCustomError(promise, iface, errorName) {
   let error;
   try {
     await promise;
   } catch (e) {
     error = e;
   }
-  if (!error) throw new Error(`expected UserOperation to be rejected with ${reasonPrefix}, but it was accepted`);
+  if (!error) throw new Error(`expected revert with ${errorName}, but the call succeeded`);
 
   const data = error.data ?? error.error?.data ?? error.info?.error?.data;
-  const parsed = data ? entryPoint.interface.parseError(data) : null;
-  if (parsed?.name !== "FailedOp") throw error;
+  let parsed = null;
+  try {
+    parsed = data ? iface.parseError(data) : null;
+  } catch {
+    // not an error declared on iface
+  }
+  if (parsed?.name !== errorName) throw error;
+  return parsed.args;
+}
 
-  const reason = parsed.args.reason;
+/**
+ * Asserts a UserOperation was rejected during validation with an EntryPoint
+ * `FailedOp` whose reason starts with `reasonPrefix` (e.g. "AA24" = bad signature
+ * / signer not permitted, "AA22" = expired or not yet valid).
+ */
+async function expectUserOpRejected(promise, entryPoint, reasonPrefix) {
+  const { reason } = await expectCustomError(promise, entryPoint.interface, "FailedOp");
   if (!reason.startsWith(reasonPrefix)) {
     throw new Error(`expected FailedOp reason starting with "${reasonPrefix}", got "${reason}"`);
   }
@@ -265,7 +277,7 @@ function buildLegacyPublishRequests(setup, { revocable = true, propertyValue = "
  *   stranger     – unrelated address with no permissions
  *   bundler      – submits UserOperations
  */
-async function deployManagedAccountStack({ seedExtension = SEED_EXTENSION_CURRENT } = {}) {
+async function deployManagedAccountStack({ seedExtension = SEED_EXTENSION_LEGACY } = {}) {
   const [factoryAdmin, accountAdmin, delegate, stranger, bundler] = await ethers.getSigners();
 
   const easSetup = await deployEASWithSchemas();
@@ -327,13 +339,13 @@ async function deployManagedAccountStack({ seedExtension = SEED_EXTENSION_CURREN
   };
 }
 
-/** Default fixture: the Seed extension exactly as deployed on OP Sepolia today. */
+/** Default fixture: a single account with the legacy Seed extension registered. */
 async function managedAccountFixture() {
   return deployManagedAccountStack();
 }
 
 module.exports = {
-  SEED_EXTENSION_CURRENT,
+  SEED_EXTENSION_LEGACY,
   deployManagedAccountStack,
   managedAccountFixture,
   buildExtension,
@@ -342,6 +354,7 @@ module.exports = {
   grantSessionKey,
   revokeSessionKey,
   sendUserOp,
+  expectCustomError,
   expectUserOpRejected,
   attestedEvents,
   buildLegacyPublishRequests,
