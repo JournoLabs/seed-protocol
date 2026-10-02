@@ -1,3 +1,6 @@
+// NOTE: Hardhat 2 script, not yet ported to Hardhat 3. It will be ported or replaced
+// in the deploy branch (see docs/hardhat3-migration-plan.md, H9). Expect it to fail until then.
+
 import { ethers }                       from "hardhat";
 import { SchemaRegistry, ZERO_ADDRESS } from '@ethereum-attestation-service/eas-sdk'
 import schemaRegistryAbi                from '../eas/SchemaRegistry.json'

@@ -1,3 +1,6 @@
+// NOTE: Hardhat 2 script, not yet ported to Hardhat 3. It will be ported or replaced
+// in the deploy branch (see docs/hardhat3-migration-plan.md, H9). Expect it to fail until then.
+
 import { Contract, keccak256, toUtf8Bytes } from 'ethers'
 import { ethers }                           from 'hardhat'
 import SeedProtocolExtensionJson

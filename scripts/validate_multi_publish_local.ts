@@ -1,3 +1,6 @@
+// NOTE: Hardhat 2 script, not yet ported to Hardhat 3. It will be ported or replaced
+// in the deploy branch (see docs/hardhat3-migration-plan.md, H9). Expect it to fail until then.
+
 /**
  * Validation script: Run multiPublish against local chain with fixture payload.
  * Prerequisites: Run `bun run scripts/setup_local.ts` first (or have localhost.json + node running).
