@@ -237,7 +237,7 @@ The port is done when the Hardhat 3 run reaches the same **116 passing**.
 - **Step 3 (bytecode parity):** all 14 deployable artifacts, the 4 production contracts plus EAS, SchemaRegistry, the thirdweb account stack, the mock and the libraries, match Hardhat 2 in both runtime and initcode once metadata is blanked. For the production contracts the raw bytecode has the same length and differs only inside the CBOR metadata blob. Negative control: a build with `runs: 999` makes the script report all 4 production contracts as different and exit 1.
 - **Step 4 (fixtures):** the four fixtures are TypeScript ESM. Fixtures that need a network come from factories that take the test file's connection (`createManagedAccountFixtures`, `createExecutorEASFixture`, `createExtensionEASFixture`); the pure helpers are plain exports. `DynamicContract` keeps the merged-ABI account's methods typed through `.connect()`. `tsconfig` lists `types: ["node", "mocha"]`, because an implicit `@types/minimatch` had made `tsc` stop before checking any code.
 - **Step 5 (suites):** all five suites are ported to `.test.ts`, one commit each: **111 passing**, the same as the Hardhat 2 `npm test` baseline, run together in one process. `test/` is type-clean, `test/SeedProtocol.ts` is deleted (H8), and the unused `callExecutorFromAccountStatic` helper was dropped. One test is renamed, since its manifest branch is gone (H7): "should track separate EAS addresses per account". The router-guard mutation check was re-run against the ported suite: all 10 guards are caught (`executeFromExecutor` caller / installed / mode / min length / target / selector / value, double install, double uninstall, install-uninstall auth).
-- **Known gap until step 7:** `tsc` reports errors in `scripts/`, which are Hardhat 2 scripts (H9). CI type-checking (step 8) must cover `test/` only until the deploy branch.
+- **Known gap until the deploy branch:** `tsc` reports errors in `scripts/`, which are Hardhat 2 scripts (H9). CI type-checks the config and `test/` only (`tsconfig.test.json`, step 8).
 - **Step 6 (gas and coverage):** the gas suite is ported, and `bun run test` gives **116 passing**, the full Hardhat 2 baseline.
   - `test:gas` → `hardhat test --gas-stats`. It attributes `multiPublish` to `SeedProtocolExtension` *via ManagedAccount*, so the numbers include Router overhead (median 1,060,847 gas over the five payloads; a fresh baseline). `--gas-stats-json <path>` saves them.
   - `coverage` → `hardhat test --coverage` (HTML and lcov in the ignored `coverage/`). Total: 91.3% of lines, 87.7% of statements.
@@ -247,3 +247,17 @@ The port is done when the Hardhat 3 run reaches the same **116 passing**.
     - `SeedExecutorRouterExtension` constructor `InvalidAddress` checks (lines 74–75)
     - `SeedProtocolExtensionBase` line 113
     - `SeedProtocolExecutor` lines 311 and 385, plus the unused `ModeLib.encodeSimpleBatch` (37–39)
+- **Step 7 (scripts):** deleted `deploy_optimism_sepolia.ts`, `deploy_optimism_sepolia_extension.ts`, `upgrade_optimism_sepolia.ts` and the finished `check_bytecode_parity.ts`. The 18 scripts that still depend on Hardhat 2 or its artifacts start with a "not yet ported" note. `scripts/utils/deploy.ts` still uses `deployProxy` and is reworked in the deploy branch. `get_4_byte_selectors.ts` and `print_test_json.ts` run as-is with `bun`.
+- **Step 8 (CI):** `.github/workflows/test.yml` runs on pushes to `main` and on PRs:
+  - `actions/checkout@v7`, `actions/setup-node@v7` (Node from `.nvmrc`), `oven-sh/setup-bun@v2` (bun from `packageManager`)
+  - `bun install --frozen-lockfile`, then `bun run build`, `bun run typecheck` and `bun run test`
+
+  Verified two ways: a fresh clone of the branch runs all four steps green (116 passing), and a planted type error fails `typecheck`.
+- **Step 9 (docs):** the README is rewritten:
+  - requirements (Node 24, bun only) and dev commands
+  - project layout
+  - build notes (the thirdweb patch, `npmFilesToBuild`, compiler settings)
+  - the `configVariable` secrets
+  - the status of `scripts/`
+
+**Migration complete:** build and tests run on Hardhat 3, and only the deploy follow-ups in §6 remain.
