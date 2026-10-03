@@ -190,6 +190,8 @@ Copied from [access-control plan §4b](security/extension-access-control-plan.md
 
 The SDK also needs the new addresses (executor, extensions) from step 9.7.
 
+**Released in seed-protocol-sdk 0.6.8 (2026-10-03).**
+
 ## 5. Inputs needed
 
 | ID | Input | Needed by |
@@ -200,7 +202,7 @@ The SDK also needs the new addresses (executor, extensions) from step 9.7.
 | I4 | Did any account install the old executor `0x0434…`? **Answered: no (2026-10-02).** See the progress log. | step 9.6 |
 | I5 | `metadataURI` for the extension metadata. The old ones were thirdweb-published IPFS URIs; `""` works on-chain. | step 3 |
 | I6 | Keep `decode_attestation_data.ts`? **Answered: keep** for now, pending personal review; it stays unported and out of the type-check. | step 8 |
-| I7 | Deployer key for OP Sepolia. Today `DEV_KEY`; consider `hardhat-keystore` (installed) instead of a plaintext `.env`. **Open, being decided.** Changing it changes the CREATE2 addresses (update `SEED_DEPLOYER` in `scripts/lib/createxSalt.ts`) and, unless it's the same key, means granting it `EXTENSION_ROLE` (I2). | step 9.1, 9.3 |
+| I7 | Deployer key for OP Sepolia. **Answered (2026-10-03): keep `DEV_KEY`** (`0x00467f…4D84B`). The predicted addresses in §8 and the `EXTENSION_ROLE` holder (I2) stay as they are. | step 9.1, 9.3 |
 
 ## 6. Risks
 
