@@ -7,9 +7,9 @@ import { expect } from "chai";
 import hre from "hardhat";
 
 describe("solidity build profiles", function () {
-  it("production compiles exactly like default (paris, not isolated)", function () {
+  it("production compiles exactly like default (paris, isolated)", function () {
     const { default: def, production } = hre.config.solidity.profiles;
-    expect(production.isolated).to.equal(def.isolated);
+    expect([def.isolated, production.isolated]).to.deep.equal([true, true]);
     expect(production.compilers.map((c) => [c.version, c.settings])).to.deep.equal(
       def.compilers.map((c) => [c.version, c.settings]),
     );

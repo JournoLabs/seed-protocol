@@ -48,20 +48,21 @@ describe("seed:verify-live", function () {
     expect(await verify(setup)).to.deep.equal([]);
   });
 
-  it("fails before the rollout: setEas still routed, old implementation, no executor router", async function () {
+  it("fails before the rollout: old functions still routed, new multiPublish not, no executor router", async function () {
     const setup = await networkHelpers.loadFixture(oldRegistryFixture);
 
     const failures = await verify(setup);
 
     expect(failures.some((f) => f.startsWith("setEas is not routed"))).to.equal(true);
+    expect(failures.some((f) => f.startsWith("the string-publishLocalId multiPublish is not routed"))).to.equal(true);
     expect(failures.some((f) => f.startsWith("multiPublish routes to SeedProtocolExtension"))).to.equal(true);
     expect(failures.some((f) => f.startsWith("getSeedExecutor() returns"))).to.equal(true);
     // The fixture registers "bytes32 version" but not the other base schemas.
     const schemas = failures.find((f) => f.startsWith("the protocol's base schemas are registered"));
     expect(schemas).to.include('"bytes32 schemaId,string name"').and.include('"string storage_transaction_id"');
     expect(schemas).to.not.include('"bytes32 version"');
-    // The old stand-in is the hardened contract, so these hold either way.
-    expect(failures.some((f) => f.startsWith("multiPublish from a random address"))).to.equal(false);
+    // The index multiPublish isn't routed yet, so the call fails before reaching any access check.
+    expect(failures.some((f) => f.startsWith("multiPublish from a random address"))).to.equal(true);
     expect(failures.some((f) => f.startsWith("account belongs to the factory"))).to.equal(false);
   });
 

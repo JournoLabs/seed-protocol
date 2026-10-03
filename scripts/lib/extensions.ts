@@ -1,4 +1,4 @@
-import { type Fragment, Interface } from "ethers";
+import { type Fragment, type FunctionFragment, Interface } from "ethers";
 
 /**
  * How the Seed contracts are registered on a thirdweb ManagedAccountFactory.
@@ -8,10 +8,23 @@ import { type Fragment, Interface } from "ethers";
  */
 
 /**
- * Selectors SeedProtocolExtension / SeedProtocolExtensionV2 are registered with.
+ * Selectors SeedProtocolExtension is registered with.
  * `setEas` is deliberately absent: EAS is pinned at construction (access-control plan D3).
  */
 export const SEED_EXTENSION_FUNCTIONS = ["multiPublish", "getEas"];
+
+/**
+ * Functions the pre-rollout Seed extension routed that no current contract has: the
+ * string-`publishLocalId` multiPublish and `setEas`. The rollout must leave them unrouted.
+ */
+export const RETIRED_SEED_FUNCTIONS = new Interface([
+  "function multiPublish((string,bytes32,bytes32,bytes32,bytes32,bool,(bytes32,(address,uint64,bool,bytes32,bytes,uint256)[])[],(string,bytes32)[])[])",
+  "function getEas()",
+  "function setEas(address)",
+]);
+export const RETIRED_SEED_SELECTORS = RETIRED_SEED_FUNCTIONS.fragments
+  .filter((f): f is FunctionFragment => f.type === "function" && f.format("sighash") !== "getEas()")
+  .map((f) => f.selector);
 
 /** Selectors SeedExecutorRouterExtension is registered with. */
 export const EXECUTOR_ROUTER_FUNCTIONS = [

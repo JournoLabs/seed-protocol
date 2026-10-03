@@ -36,23 +36,15 @@ export {
 
 interface SeedExtensionConfig {
   name: string;
-  contractName: "SeedProtocolExtension" | "SeedProtocolExtensionV2";
-  constructorArgs: (setup: { easAddress: string }) => unknown[];
+  contractName: "SeedProtocolExtension";
+  constructorArgs: (setup: { easAddress: string }) => [string];
   functions: string[];
 }
 
 /** SeedProtocolExtension as it should be registered on the factory (EAS pinned at construction). */
-export const SEED_EXTENSION_LEGACY: SeedExtensionConfig = {
+export const SEED_EXTENSION: SeedExtensionConfig = {
   name: "SeedProtocolExtension",
   contractName: "SeedProtocolExtension",
-  constructorArgs: ({ easAddress }) => [easAddress],
-  functions: SEED_EXTENSION_FUNCTIONS,
-};
-
-/** SeedProtocolExtensionV2 (uint publishIndex cross-references), registered the same way. */
-export const SEED_EXTENSION_V2: SeedExtensionConfig = {
-  name: "SeedProtocolExtensionV2",
-  contractName: "SeedProtocolExtensionV2",
   constructorArgs: ({ easAddress }) => [easAddress],
   functions: SEED_EXTENSION_FUNCTIONS,
 };
@@ -139,7 +131,7 @@ export function createManagedAccountFixtures({ ethers }: { ethers: HardhatEthers
    *   bundler      – submits UserOperations
    */
   async function deployManagedAccountStack({
-    seedExtension = SEED_EXTENSION_LEGACY,
+    seedExtension = SEED_EXTENSION,
     withExecutor = false,
   }: { seedExtension?: SeedExtensionConfig; withExecutor?: boolean } = {}) {
     const [factoryAdmin, accountAdmin, delegate, stranger, bundler] = await ethers.getSigners();
@@ -235,17 +227,12 @@ export function createManagedAccountFixtures({ ethers }: { ethers: HardhatEthers
     };
   }
 
-  /** Default fixture: a single account with the legacy Seed extension registered. */
+  /** Default fixture: a single account with the Seed extension registered. */
   async function managedAccountFixture() {
     return deployManagedAccountStack();
   }
 
-  /** Same stack with SeedProtocolExtensionV2 registered instead. */
-  async function managedAccountV2Fixture() {
-    return deployManagedAccountStack({ seedExtension: SEED_EXTENSION_V2 });
-  }
-
-  /** Legacy stack plus SeedProtocolExecutor and its Router extension (not yet installed on the account). */
+  /** Default stack plus SeedProtocolExecutor and its Router extension (not yet installed on the account). */
   async function managedAccountExecutorFixture() {
     const setup = await deployManagedAccountStack({ withExecutor: true });
     return { ...setup, executor: setup.executor!, executorRouterImpl: setup.executorRouterImpl! };
@@ -254,7 +241,6 @@ export function createManagedAccountFixtures({ ethers }: { ethers: HardhatEthers
   return {
     deployManagedAccountStack,
     managedAccountFixture,
-    managedAccountV2Fixture,
     managedAccountExecutorFixture,
     setSignerPermissions,
     grantSessionKey,

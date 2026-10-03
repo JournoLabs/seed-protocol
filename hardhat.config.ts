@@ -66,14 +66,15 @@ export default defineConfig({
   },
   solidity: {
     // Matches the Hardhat 2 build exactly (see docs/hardhat3-migration-plan.md, H4).
-    // Both profiles are spelled out and identical. From the short form, Hardhat derives
-    // `production` (what `ignition deploy` builds on live networks) with only the
-    // optimizer settings, which drops evmVersion (so `cancun`), and with `isolated: true`,
-    // which changes the metadata hash. Either one moves the CREATE2 addresses away from
-    // the tested build and seed:predict-addresses.
+    // Both profiles are spelled out and identical: `ignition deploy` builds `production`
+    // on live networks, the tests and seed:predict-addresses build `default`, and any
+    // difference moves the CREATE2 addresses. (From the short form, Hardhat derives
+    // `production` with only the optimizer settings, so evmVersion fell back to `cancun`.)
+    // Isolated, so each contract's metadata hash, and so its address, depends only on the
+    // files it imports; non-isolated, adding or renaming any other contract moves them all.
     profiles: {
-      default: { version: '0.8.27', settings: { evmVersion: 'paris', optimizer: { enabled: true, runs: 200 } } },
-      production: { version: '0.8.27', isolated: false, settings: { evmVersion: 'paris', optimizer: { enabled: true, runs: 200 } } },
+      default: { version: '0.8.27', isolated: true, settings: { evmVersion: 'paris', optimizer: { enabled: true, runs: 200 } } },
+      production: { version: '0.8.27', isolated: true, settings: { evmVersion: 'paris', optimizer: { enabled: true, runs: 200 } } },
     },
     // Hardhat 3 only emits artifacts for project sources. Tests and scripts
     // deploy these npm contracts by name, so build them explicitly.

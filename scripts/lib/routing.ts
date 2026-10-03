@@ -145,7 +145,7 @@ function planOne(
   return { kind: "replace", extension, replacing: predecessor };
 }
 
-/** The rollout's Router changes (P7): the legacy Seed extension, then the executor router. */
+/** The rollout's Router changes (P7): the Seed extension, then the executor router. */
 export function planRollout(
   registry: RegistryExtension[],
   seedExtension: Extension,
@@ -189,9 +189,11 @@ export function describeAction(action: RouterAction): string {
     case "add":
       return `addExtension("${metadata.name}") → ${metadata.implementation} [${sigs}]`;
     case "replace": {
+      // A dropped function whose name lives on (a changed signature) is shown in full.
+      const kept = new Set(functions.map((f) => functionName(f.functionSignature)));
       const dropped = action.replacing.functions
         .filter((old) => !functions.some((f) => f.functionSelector.toLowerCase() === old.selector.toLowerCase()))
-        .map((f) => functionName(f.signature));
+        .map((f) => (kept.has(functionName(f.signature)) ? f.signature : functionName(f.signature)));
       return (
         `replaceExtension("${metadata.name}") ${action.replacing.implementation} → ${metadata.implementation} [${sigs}]` +
         (dropped.length ? `; stops routing [${dropped.join(", ")}]` : "")

@@ -90,8 +90,8 @@ export function attestedEvents(
 
 /**
  * One publish request: new seed + version, plus one property attestation whose
- * refUID the extension rewrites to the new version. With no propertiesToUpdate it
- * encodes for both the legacy (string localId) and V2 (publishIndex) ABIs.
+ * refUID the extension rewrites to the new version. Cross-references
+ * (`propertiesToUpdate`) are `{ publishIndex, propertySchemaUid }`.
  */
 export function buildPublishRequests(
   setup: { seedSchemaUid: string; versionSchemaUid: string; propertySchemaUid: string },

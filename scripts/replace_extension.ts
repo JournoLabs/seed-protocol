@@ -13,6 +13,7 @@ import {
   routingMismatches,
   takeSnapshot,
 } from "./lib/routing.js";
+import { RETIRED_SEED_SELECTORS } from "./lib/extensions.js";
 import { isSimulated } from "./lib/network.js";
 import { buildSeedExtensions, defaultDeploymentId, loadRolloutParameters, loadSeedAddresses } from "./lib/seedDeployment.js";
 
@@ -29,8 +30,6 @@ import { buildSeedExtensions, defaultDeploymentId, loadRolloutParameters, loadSe
  * act for an EXTENSION_ROLE holder, the call is printed to submit by hand;
  * `--check-only` then runs step 4 on its own.
  */
-
-const LEGACY_SET_EAS = new Interface(["function setEas(address)"]).getFunction("setEas")!.selector;
 
 interface Args {
   parameters: string;
@@ -95,7 +94,7 @@ export async function replaceExtension(
   const wantedSelectors = [extensions.seedProtocolExtension, extensions.seedExecutorRouterExtension].flatMap((e) =>
     e.functions.map((f) => f.functionSelector),
   );
-  const before = await takeSnapshot(factory, [...wantedSelectors, LEGACY_SET_EAS]);
+  const before = await takeSnapshot(factory, [...wantedSelectors, ...RETIRED_SEED_SELECTORS]);
   console.log(`EXTENSION_ROLE holders: ${before.extensionRoleHolders.join(", ") || "(none)"}`);
   console.log(`Registered extensions at block ${before.blockNumber}:`);
   for (const ext of before.extensions) console.log(`  ${ext.name} → ${ext.implementation} (${ext.functions.length} functions)`);

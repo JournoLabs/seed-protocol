@@ -63,7 +63,7 @@ describe("seed:explain-userop", function () {
   it("decodes a logged Seed revert", async function () {
     const setup = await networkHelpers.loadFixture(managedAccountFixture);
     const requests = buildPublishRequests(setup);
-    requests[0].propertiesToUpdate = [{ publishLocalId: "missing", propertySchemaUid: setup.propertySchemaUid }];
+    requests[0].propertiesToUpdate = [{ publishIndex: 5n, propertySchemaUid: setup.propertySchemaUid }];
     const { success, receipt } = await sendUserOp({
       ...setup,
       signer: setup.accountAdmin,
@@ -72,7 +72,7 @@ describe("seed:explain-userop", function () {
     expect(success).to.equal(false);
 
     const op = await explain(setup, receipt!.hash);
-    expect(op.outcome).to.deep.equal({ kind: "reverted", reason: 'UnknownPublishLocalId(string) ["missing"]', replayed: false });
+    expect(op.outcome).to.deep.equal({ kind: "reverted", reason: 'PublishIndexOutOfBounds(uint256,uint256) ["5","1"]', replayed: false });
   });
 
   it("reports success", async function () {

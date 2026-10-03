@@ -14,7 +14,6 @@ const SEED_DEPLOYER = "0x00467fe2608Dff148C83009927E4e7234Bc4D84B";
 
 const CONTRACTS = [
   { key: "seedProtocolExtension", name: "SeedProtocolExtension", args: (eas: string) => [eas] },
-  { key: "seedProtocolExtensionV2", name: "SeedProtocolExtensionV2", args: (eas: string) => [eas] },
   { key: "seedProtocolExecutor", name: "SeedProtocolExecutor", args: () => [] },
 ] as const;
 
@@ -53,7 +52,7 @@ describe("SeedProtocol Ignition module (create2)", function () {
     // The other sender goes first: it also makes Ignition bootstrap CreateX on this chain.
     const otherDeployment = await deployFrom(other.address);
     const predicted = await predictAddresses(connection, hre, { eas, deployer: owner.address, salt });
-    expect(predicted.map((p) => p.status)).to.deep.equal(["free", "free", "free", "free"]);
+    expect(predicted.map((p) => p.status)).to.deep.equal(["free", "free", "free"]);
     const ownerDeployment = await deployFrom(owner.address);
 
     for (const { key, name, args } of CONTRACTS) {
@@ -67,7 +66,7 @@ describe("SeedProtocol Ignition module (create2)", function () {
     // seed:predict-addresses saw the same addresses, router extension included.
     for (const p of predicted) expect(await ownerDeployment[p.contract].getAddress(), p.contract).to.equal(p.address);
     const after = await predictAddresses(connection, hre, { eas, deployer: owner.address, salt });
-    expect(after.map((p) => p.status)).to.deep.equal(["deployed", "deployed", "deployed", "deployed"]);
+    expect(after.map((p) => p.status)).to.deep.equal(["deployed", "deployed", "deployed"]);
 
     // The router extension's address depends on the executor's, so check its wiring rather than predict it.
     const executor = await ownerDeployment.seedProtocolExecutor.getAddress();

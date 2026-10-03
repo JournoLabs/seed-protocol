@@ -12,7 +12,7 @@ import { Contract, ZeroAddress } from "ethers";
 import { network } from "hardhat";
 import type { RoutingSnapshot } from "../scripts/lib/routing.js";
 import { replaceExtension } from "../scripts/replace_extension.js";
-import { SET_EAS, createRolloutFixtures } from "./fixtures/rolloutFixture.js";
+import { OLD_MULTI_PUBLISH, SET_EAS, createRolloutFixtures } from "./fixtures/rolloutFixture.js";
 
 const connection = await network.create();
 const { networkHelpers } = connection;
@@ -49,9 +49,11 @@ describe("seed:replace-extension", function () {
       expect(await factory.getImplementationForFunction(fn.functionSelector), fn.functionSignature).to.equal(routerImpl);
     }
     expect(await factory.getImplementationForFunction(SET_EAS)).to.equal(ZeroAddress);
+    expect(await factory.getImplementationForFunction(OLD_MULTI_PUBLISH), "string-publishLocalId multiPublish").to.equal(ZeroAddress);
 
     const before: RoutingSnapshot = JSON.parse(await readFile(snapshotFile, "utf8"));
     expect(before.routing[SET_EAS]).to.equal(oldImpl);
+    expect(before.routing[OLD_MULTI_PUBLISH]).to.equal(oldImpl);
     expect(before.extensions.find((e) => e.name === "SeedProtocolExtension")?.implementation).to.equal(oldImpl);
   });
 

@@ -235,7 +235,6 @@ async function up(args: string[]) {
         schemaRegistry: schemaRegistry.target,
         managedAccountFactory: factoryAddress,
         seedProtocolExtension: seed["SeedProtocol#SeedProtocolExtension"],
-        seedProtocolExtensionV2: seed["SeedProtocol#SeedProtocolExtensionV2"],
         seedProtocolExecutor: seed["SeedProtocol#SeedProtocolExecutor"],
         seedExecutorRouterExtension: seed["SeedProtocol#SeedExecutorRouterExtension"],
       },

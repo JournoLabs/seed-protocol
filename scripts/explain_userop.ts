@@ -126,7 +126,6 @@ export default async function explainUserOpTask(args: Args, hre: HardhatRuntimeE
   const calls = mergeInterfaces(
     await abi("ManagedAccount"),
     await abi("AccountExtension"),
-    await abi("SeedProtocolExtensionV2"),
     await abi("SeedProtocolExtension"),
     await abi("SeedProtocolExecutor"),
     await abi("SeedExecutorRouterExtension"),

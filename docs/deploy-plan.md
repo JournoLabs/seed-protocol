@@ -51,6 +51,7 @@ Plain scripts are still used where Ignition doesn't fit: one-off admin calls who
 
 ### P3: Keep solc 0.8.27 / `paris` for this rollout
 That's the bytecode the 116 tests and the mutation check cover.
+- Both build profiles are spelled out, identical and **isolated** (each file compiled with only its own imports). Isolated, a contract's metadata hash, and so its CREATE2 address, depends only on what it imports; non-isolated, adding or renaming any other contract in the project moves every address. See the 2026-10-03 progress-log entries.
 - Upgrading solc and the EVM target changes every deployed address (P2), so do it once, before any mainnet deploy. That's step 11, after the OP Sepolia rollout.
 
 ### P4: Router changes are a script that falls back to printing calldata
@@ -78,9 +79,11 @@ It exits non-zero on any mismatch.
 2. **Fork rehearsal.** An `optimism_sepolia_fork` network (`edr-simulated`, forking OP Sepolia) runs the real rollout against the **real** factory and an existing test account, impersonating the `EXTENSION_ROLE` holder.
    - This catches surprises in the live router state (old selectors, an unexpected registry) before any real transaction is sent.
 
-### P7: Register the legacy extension now; V2 waits for the SDK
-The SDK calls the legacy `publishLocalId` ABI on the account (access-control plan §5), so the factory gets the hardened `SeedProtocolExtension` with `[multiPublish, getEas]`.
-- `SeedProtocolExtensionV2` is deployed and verified, but not routed until the SDK switches to `publishIndex`.
+### P7: One Seed extension, with index cross-references
+*Revised 2026-10-03.* There was a string-`publishLocalId` `SeedProtocolExtension` and a `publishIndex` `SeedProtocolExtensionV2`. With no production users of either, there's now one contract, `SeedProtocolExtension`, with the `publishIndex` ABI (the former V2), registered with `[multiPublish, getEas]`.
+- `publishIndex` is the target's position in the batch. On-chain nothing is lost: the string was only ever used inside the transaction to find the target, and `localId` is still in the calldata.
+- The contract rejects an index that's out of range, points at an already-attested request, or doesn't land on exactly one entry for the property. A wrong index that lands on another request with that same property would go unnoticed, so the client must compute indexes from the exact array it sends (§4.6).
+- The SDK must send this ABI before step 9.3 (§4.6); the old string selector stops being routed.
 
 ### P8: No mocks on public networks
 `deploy_executor_and_mock.ts` put `MockERC7579Account` on OP Sepolia. The rehearsals use the real thirdweb stack instead, so mocks stay in tests.
@@ -188,6 +191,8 @@ Copied from [access-control plan §4b](security/extension-access-control-plan.md
 4. **Executor revocation** (`multiRevoke` via the executor) no longer exists (D8). Revoke owner-signed via `execute(EAS, multiRevoke)`.
 5. **`assertExecutorModuleReadyForAccount`** treats Router accounts as unsupported. With `SeedExecutorRouterExtension` installed they're supported.
 
+6. **Encode `multiPublish` on the account with the `publishIndex` ABI** (P7, revised 2026-10-03). 0.6.8 sends the string-`publishLocalId` ABI, which the rollout stops routing, and its `useIntegerLocalIds` path encodes a third shape that no contract has. Required before 9.3; sent to the SDK developer as a change request. `twin:e2e` is the acceptance test.
+
 The SDK also needs the new addresses (executor, extensions) from step 9.7.
 
 **Released in seed-protocol-sdk 0.6.8 (2026-10-03).**
@@ -237,7 +242,7 @@ What changed from the plan as written:
 - **Step 8:** `debug_multi_publish.ts` is ported as `seed:debug-publish`, which simulates through the *account* rather than the extension. `utils/test_data.ts` is deleted rather than fixed, and so is `print_test_json.ts`, which only printed it. The maintained samples are `test/fixtures/multi_publish_*.json`. `decode_attestation_data.ts` is the only file left out of the type-check, pending I6.
 - **Account helpers** (session keys, UserOps, publish requests) moved from the test fixture to `scripts/lib/managedAccount.ts` so the rehearsal can use them; the fixture re-exports them.
 
-**Predicted OP Sepolia addresses** (`seed:predict-addresses --network optimism_sepolia`, deployer `0x00467f…4D84B`, salt label `seed-v1`, solc 0.8.27/paris). All four are `free`, and CreateX would deploy exactly there:
+**Predicted OP Sepolia addresses** *(superseded 2026-10-03; the current ones are in the last progress-log entry)* (`seed:predict-addresses --network optimism_sepolia`, deployer `0x00467f…4D84B`, salt label `seed-v1`, solc 0.8.27/paris). All four are `free`, and CreateX would deploy exactly there:
 
 | Contract | Address |
 |----------|---------|
@@ -268,3 +273,19 @@ These change if the deployer (I7), the salt label, the compiler settings (P3) or
 Step 9.1 would have deployed bytecode the tests never ran, at addresses other than the ones above. `hardhat.config.ts` now defines both profiles, identically (`paris`, not isolated). `test/buildProfiles.test.ts` fails if they diverge again. With either profile, `seed:predict-addresses` gives exactly the table above, all `free`; 136 tests pass.
 
 **2026-10-03: fork rehearsal rerun, after the build-profile fix.** `bun run rehearse:op-sepolia --account 0x25B1…6FFd --admin 0x8436…47F8` (I3a) passes, forked at block 49,629,181. The live router is unchanged since step 7: `AccountExtension` → `0xCD68…a055` (20 functions), `SeedProtocolExtension` → `0xe8A5…607A` (`multiPublish`, `setEas`, `getEas`), and `EXTENSION_ROLE` is still held only by `0x00467f…4D84B`. One `multicall` replaced the extension and added the router extension (28 selectors check out), the base schemas are registered, and `verify-live` passed all 13 checks on I3a. Admin and session-key (UserOp) publishes passed on a fresh account, and so did an admin publish on I3a by its real admin, impersonated.
+
+**2026-10-03: step 9.1 run, then superseded by a single extension (P7 revised) and isolated builds (P3).**
+- **9.1 ran:** all four contracts were deployed from `DEV_KEY` at the addresses in the table above (Ignition record now in `ignition/deployments/op-sepolia-superseded-2026-10-03/`). `SeedProtocolExtensionV2` and `SeedExecutorRouterExtension` were confirmed verified on Etherscan. **9.2 (dry run) ran; 9.3 did not**, so the factory still routes the old extension and none of these four is used. They stay on chain, unused.
+- **One extension (P7):** the string-`publishLocalId` contract and `ISeedProtocolLegacy` are deleted; the `publishIndex` contract is now `SeedProtocolExtension`. `SeedPublishLib` is unchanged (the executor imports it), so its unused `UnknownPublishLocalId` declaration stays until step 11. New: tests that a reference writes only the request at its index and that `localId` isn't read; `verify-live` checks the string `multiPublish` selector is unrouted; `seed:debug-publish` resolves SDK-style `publishLocalId` payloads to indexes and fails on unknown or duplicate localIds; `twin:e2e` is now the acceptance test for SDK change §4.6, so it fails on 0.6.8.
+- **Isolated builds (P3):** after the rename, the executor's and router extension's addresses moved although their sources didn't change: the code was byte-identical, only the metadata hash differed, because a non-isolated build's metadata depends on the rest of the project. Both profiles are now isolated; the executor and router extension then land where an isolated build put them before the rename, so unrelated files no longer move them. The 0.8.27/paris code is unchanged.
+- **Checks:** 119 tests pass (fewer than 136 because the string and V2 variants of each test collapsed into one); type-check clean; `rehearse:local` passes; `rehearse:op-sepolia --account 0x25B1…6FFd --admin 0x8436…47F8` passes at block 49,630,303 (29 selectors check out, `verify-live` 14/14, all three publishes).
+
+**Predicted OP Sepolia addresses** (deployer `0x00467f…4D84B`, salt label `seed-v1`, solc 0.8.27/paris, isolated). All `free`:
+
+| Contract | Address |
+|----------|---------|
+| `SeedProtocolExtension` | `0xde5F3133D9A4a4957ad44b4C8d44D0cfaf0A4A6B` |
+| `SeedProtocolExecutor` | `0xC8FF756ED1fC96C604FBFc356B1379262411338B` |
+| `SeedExecutorRouterExtension` | `0x24E7e7EAa628d1A448B720728bc2daF3255F5D6D` |
+
+**Gate for re-running 9.1–9.3:** the SDK release with §4.6, passing `twin:e2e`.

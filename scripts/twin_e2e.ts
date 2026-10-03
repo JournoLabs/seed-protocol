@@ -234,25 +234,40 @@ await step("ensureManagedAccountEasConfigured: the account reports the twin's EA
   if (asked) throw new Error("wanted to send setEas");
 });
 
-await step("the extension rejects a cross-reference to an unknown publishLocalId (UnknownPublishLocalId)", async () => {
-  const tx = C.encodeMultiPublish(managed.address, batch("bad", "no-such-request"), 5_000_000n);
+await step("the SDK's encoder refuses a cross-reference to a localId that isn't in the batch, rather than encode a wrong publishIndex", async () => {
   try {
-    await provider.send("eth_call", [{ from: adminEoa.address, to: tx.to, data: tx.data }, "latest"]);
+    C.encodeMultiPublish(managed.address, batch("bad", "no-such-request"), 5_000_000n);
   } catch (e: any) {
-    const data = [e.data, e.info?.error?.data, e.error?.data].find((d) => typeof d === "string" && d.startsWith("0x"));
-    const name = data ? extensionAbi.parseError(data)?.name : undefined;
-    if (name === "UnknownPublishLocalId") return;
-    throw new Error(`reverted with ${name ?? data ?? e.message}`);
+    if (/no-such-request/.test(e.message)) return `threw: ${e.message}`;
+    throw new Error(`threw without naming the localId: ${e.message}`);
+  }
+  throw new Error("encoded it");
+});
+
+await step("the extension rejects an out-of-bounds publishIndex (PublishIndexOutOfBounds)", async () => {
+  const requests = batch("bad").map(({ propertiesToUpdate, ...r }) => ({
+    ...r,
+    propertiesToUpdate: propertiesToUpdate.map((p) => ({ publishIndex: 5n, propertySchemaUid: p.propertySchemaUid })),
+  }));
+  const data = extensionAbi.encodeFunctionData("multiPublish", [requests]);
+  try {
+    await provider.send("eth_call", [{ from: adminEoa.address, to: managed.address, data }, "latest"]);
+  } catch (e: any) {
+    const revert = [e.data, e.info?.error?.data, e.error?.data].find((d) => typeof d === "string" && d.startsWith("0x"));
+    const name = revert ? extensionAbi.parseError(revert)?.name : undefined;
+    if (name === "PublishIndexOutOfBounds") return;
+    throw new Error(`reverted with ${name ?? revert ?? e.message}`);
   }
   throw new Error("succeeded");
 });
 
-await step("the SDK's pre-send check passes a valid publish on the deployed account and rejects the unknown publishLocalId (PUBLISH_PREFLIGHT_FAILED)", async () => {
+await step("the SDK's pre-send check passes a valid publish on the deployed account and rejects one the contract refuses (PUBLISH_PREFLIGHT_FAILED)", async () => {
   await presendCheck(C.encodeMultiPublish(managed.address, batch("presend"), 5_000_000n));
   try {
-    await presendCheck(C.encodeMultiPublish(managed.address, batch("bad", "no-such-request"), 5_000_000n));
+    // The author points at itself, and has no author_ref property to write into.
+    await presendCheck(C.encodeMultiPublish(managed.address, batch("bad", "author"), 5_000_000n));
   } catch (e: any) {
-    if (e.code === "PUBLISH_PREFLIGHT_FAILED" && /UnknownPublishLocalId/.test(e.message)) return "valid batch passes; bad batch names UnknownPublishLocalId";
+    if (e.code === "PUBLISH_PREFLIGHT_FAILED" && /PropertyToUpdateNotFound/.test(e.message)) return "valid batch passes; bad batch names PropertyToUpdateNotFound";
     throw new Error(`rejected with ${e.code ?? ""} ${e.message}`);
   }
   throw new Error("the bad batch passed the check");

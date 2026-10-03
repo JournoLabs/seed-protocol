@@ -10,9 +10,8 @@ export default buildModule("SeedProtocol", (m) => {
   const eas = m.getParameter<string>("eas");
 
   const seedProtocolExtension = m.contract("SeedProtocolExtension", [eas]);
-  const seedProtocolExtensionV2 = m.contract("SeedProtocolExtensionV2", [eas]);
   const seedProtocolExecutor = m.contract("SeedProtocolExecutor", []);
   const seedExecutorRouterExtension = m.contract("SeedExecutorRouterExtension", [eas, seedProtocolExecutor]);
 
-  return { seedProtocolExtension, seedProtocolExtensionV2, seedProtocolExecutor, seedExecutorRouterExtension };
+  return { seedProtocolExtension, seedProtocolExecutor, seedExecutorRouterExtension };
 });

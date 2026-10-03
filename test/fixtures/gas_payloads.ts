@@ -98,7 +98,7 @@ export const small: GasPayload = {
   ],
 };
 
-/** 2 requests, cross-ref via propertiesToUpdate (publishLocalId for Legacy, publishIndex for V2) */
+/** 2 requests, cross-ref via propertiesToUpdate (by localId here; the test converts it to publishIndex) */
 export const medium: GasPayload = {
   name: "medium",
   requests: [

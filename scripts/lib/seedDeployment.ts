@@ -7,7 +7,6 @@ import { EXECUTOR_ROUTER_FUNCTIONS, type Extension, SEED_EXTENSION_FUNCTIONS, bu
 /** Addresses from an Ignition deployment of ignition/modules/SeedProtocol.ts. */
 export interface SeedAddresses {
   seedProtocolExtension: string;
-  seedProtocolExtensionV2: string;
   seedProtocolExecutor: string;
   seedExecutorRouterExtension: string;
 }
@@ -35,7 +34,6 @@ export async function loadSeedAddresses(hre: HardhatRuntimeEnvironment, deployme
   };
   return {
     seedProtocolExtension: get("SeedProtocolExtension"),
-    seedProtocolExtensionV2: get("SeedProtocolExtensionV2"),
     seedProtocolExecutor: get("SeedProtocolExecutor"),
     seedExecutorRouterExtension: get("SeedExecutorRouterExtension"),
   };
@@ -54,11 +52,7 @@ export async function loadRolloutParameters(hre: HardhatRuntimeEnvironment, file
   return { factory: getAddress(factory) };
 }
 
-/**
- * The `Extension` structs the factory gets (P7): the legacy extension and the
- * executor router are registered now; V2 is built so it can be reviewed, but
- * isn't routed until the SDK switches to `publishIndex`.
- */
+/** The `Extension` structs the factory gets (P7): the Seed extension and the executor router. */
 export async function buildSeedExtensions(hre: HardhatRuntimeEnvironment, addresses: SeedAddresses, metadataURI = "") {
   const iface = async (name: string) => new Interface((await hre.artifacts.readArtifact(name)).abi);
   return {
@@ -74,13 +68,6 @@ export async function buildSeedExtensions(hre: HardhatRuntimeEnvironment, addres
       addresses.seedExecutorRouterExtension,
       await iface("SeedExecutorRouterExtension"),
       EXECUTOR_ROUTER_FUNCTIONS,
-      metadataURI,
-    ),
-    seedProtocolExtensionV2: buildExtension(
-      "SeedProtocolExtensionV2",
-      addresses.seedProtocolExtensionV2,
-      await iface("SeedProtocolExtensionV2"),
-      SEED_EXTENSION_FUNCTIONS,
       metadataURI,
     ),
   } satisfies Record<string, Extension>;

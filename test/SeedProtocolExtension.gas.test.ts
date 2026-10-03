@@ -50,9 +50,11 @@ function substitutePlaceholders(payload: unknown[], manifest: Manifest): any[] {
   return replacer(payload) as any[];
 }
 
-function normalizePayload(payload: any[], usePublishIndex = false) {
+/** Payloads name cross-reference targets by localId, as the SDK's do; the contract takes their index. */
+function normalizePayload(payload: any[]) {
   const localIdToIndex: Record<string, number> = {};
   payload.forEach((req, i) => {
+    if (req.localId in localIdToIndex) throw new Error(`Duplicate localId: ${req.localId}`);
     localIdToIndex[req.localId] = i;
   });
 
@@ -75,13 +77,10 @@ function normalizePayload(payload: any[], usePublishIndex = false) {
       })),
     })),
     propertiesToUpdate: (req.propertiesToUpdate || []).map((p: any) => {
-      if (usePublishIndex && "publishLocalId" in p) {
+      if ("publishLocalId" in p) {
         const idx = localIdToIndex[p.publishLocalId];
         if (idx === undefined) throw new Error(`Unknown publishLocalId: ${p.publishLocalId}`);
         return { publishIndex: idx, propertySchemaUid: p.propertySchemaUid };
-      }
-      if ("publishLocalId" in p) {
-        return { publishLocalId: p.publishLocalId, propertySchemaUid: p.propertySchemaUid };
       }
       return {
         publishIndex: typeof p.publishIndex === "string" ? parseInt(p.publishIndex, 10) : p.publishIndex,
@@ -116,7 +115,7 @@ describe("SeedProtocolExtension (gas)", function () {
   for (const { name, requests } of GAS_PAYLOADS) {
     it(`multiPublish: ${name}`, async function () {
       const substituted = substitutePlaceholders(requests, manifest);
-      const normalized = normalizePayload(substituted, false);
+      const normalized = normalizePayload(substituted);
       const extConnected = extension.connect(owner);
       const tx = await extConnected.multiPublish(normalized, { value: 0n });
       const receipt = await tx.wait();

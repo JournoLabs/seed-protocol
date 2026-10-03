@@ -2,7 +2,7 @@
 
 Smart contracts that publish Seed Protocol data as [EAS](https://attest.org) attestations made by the user's smart account:
 
-- `SeedProtocolExtension` / `SeedProtocolExtensionV2`: thirdweb ManagedAccount extensions (called via the account's Router).
+- `SeedProtocolExtension`: a thirdweb ManagedAccount extension (called via the account's Router).
 - `SeedProtocolExecutor`: an ERC-7579 executor module, plus `SeedExecutorRouterExtension`, which lets thirdweb accounts use it.
 
 See [Security model](#security-model) for who may publish, and [docs/security/extension-access-control-plan.md](docs/security/extension-access-control-plan.md) for the reasoning behind it.
@@ -80,6 +80,7 @@ Anyone else gets `Unauthorized(caller)`.
 **Other rules:**
 - **EAS is pinned.** Each extension takes the EAS address in its constructor. There's no `setEas`; changing EAS means deploying a new extension and calling `replaceExtension` on the factory.
 - **Everything published is revocable.** `multiPublish` makes every seed, version and property attestation revocable, whatever the request says, so the owner can always revoke what a delegate published. Seed and property schemas must be registered as revocable.
+- **Cross-references name their target by position.** In `propertiesToUpdate`, `publishIndex` is the target request's index in the batch; `localId` is carried for the client and never read. The contract reverts if the index is out of range, points at an earlier (already attested) request, or the target doesn't hold exactly one entry for the property. A client must compute indexes from the exact array it sends.
 - **Delegates can't revoke.** No path a session key can reach revokes attestations. Owners revoke directly with `execute(EAS, 0, revoke(...))`.
 - **The executor path** (`SeedProtocolExecutor` via `SeedExecutorRouterExtension`) trusts one executor and one EAS, both fixed when the factory admin registers the extension. Account admins only opt in (`installSeedExecutor`) or out. The executor can only `attest`/`multiAttest` on that EAS, with value passed through exactly.
 - **Factory changes need `EXTENSION_ROLE`** on the ManagedAccountFactory (`replaceExtension`, `addExtension`, `removeExtension`).

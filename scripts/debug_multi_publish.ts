@@ -13,9 +13,10 @@ import { mergeInterfaces } from "./lib/extensions.js";
  * account's routing and the extension's access checks. `--from` should be an
  * account admin (or the account itself); anyone else gets `Unauthorized`.
  *
- * The payload is a JSON array of publish requests. Requests whose
- * `propertiesToUpdate` use `publishIndex` are encoded for SeedProtocolExtensionV2,
- * otherwise for the legacy `publishLocalId` ABI.
+ * The payload is a JSON array of publish requests. A cross-reference gives its target
+ * either as `publishIndex` or, as in the SDK's publish payload, as `publishLocalId`,
+ * which is resolved to that request's index. An unknown or duplicated localId fails
+ * here rather than being encoded as the wrong index.
  */
 
 interface Args {
@@ -30,12 +31,11 @@ export default async function debugPublishTask(args: Args, hre: HardhatRuntimeEn
   const abi = async (name: string) => new Interface((await hre.artifacts.readArtifact(name)).abi);
 
   const requests = normalize(JSON.parse(await readFile(path.resolve(process.cwd(), args.payload), "utf8")));
-  const v2 = requests.some((r) => r.propertiesToUpdate.some((p) => "publishIndex" in p));
-  const extension = await abi(v2 ? "SeedProtocolExtensionV2" : "SeedProtocolExtension");
+  const extension = await abi("SeedProtocolExtension");
   const errors = mergeInterfaces(extension, await abi("ManagedAccount"), await abi("EAS"));
   const from = args.from ? getAddress(args.from) : (await ethers.getSigners())[0]?.address ?? Wallet.createRandom().address;
 
-  console.log(`Simulating multiPublish (${v2 ? "V2, publishIndex" : "legacy, publishLocalId"}) on ${args.account}`);
+  console.log(`Simulating multiPublish on ${args.account}`);
   console.log(`From ${from}, ${requests.length} request(s)`);
 
   try {
@@ -70,6 +70,18 @@ interface PublishRequest {
 
 /** JSON numbers and strings to the types ethers encodes (uint64/uint256 as bigint). */
 function normalize(payload: any[]): PublishRequest[] {
+  const indexByLocalId = new Map<string, number>();
+  payload.forEach((req, i) => {
+    if (!req.localId) return;
+    if (indexByLocalId.has(req.localId)) throw new Error(`Duplicate localId "${req.localId}" (requests ${indexByLocalId.get(req.localId)} and ${i})`);
+    indexByLocalId.set(req.localId, i);
+  });
+  const publishIndex = (p: any): bigint => {
+    if ("publishIndex" in p) return BigInt(p.publishIndex);
+    const index = indexByLocalId.get(p.publishLocalId);
+    if (index === undefined) throw new Error(`publishLocalId "${p.publishLocalId}" is not a localId in this payload`);
+    return BigInt(index);
+  };
   return payload.map((req) => ({
     localId: req.localId,
     seedUid: req.seedUid,
@@ -88,11 +100,10 @@ function normalize(payload: any[]): PublishRequest[] {
         value: BigInt(d.value),
       })),
     })),
-    propertiesToUpdate: (req.propertiesToUpdate ?? []).map((p: any) =>
-      "publishIndex" in p
-        ? { publishIndex: BigInt(p.publishIndex), propertySchemaUid: p.propertySchemaUid }
-        : { publishLocalId: p.publishLocalId, propertySchemaUid: p.propertySchemaUid },
-    ),
+    propertiesToUpdate: (req.propertiesToUpdate ?? []).map((p: any) => ({
+      publishIndex: publishIndex(p),
+      propertySchemaUid: p.propertySchemaUid,
+    })),
   }));
 }
 

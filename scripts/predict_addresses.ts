@@ -85,7 +85,6 @@ export async function predictAddresses(
   const strip = ({ runtimeCode: _, ...p }: Prediction & { runtimeCode?: string }): Prediction => p;
   return [
     strip(await predict("seedProtocolExtension", "SeedProtocolExtension", [eas])),
-    strip(await predict("seedProtocolExtensionV2", "SeedProtocolExtensionV2", [eas])),
     executor,
     strip(await predict("seedExecutorRouterExtension", "SeedExecutorRouterExtension", [eas, executor.address], executorCode)),
   ];

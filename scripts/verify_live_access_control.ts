@@ -3,7 +3,7 @@ import path from "node:path";
 import { Contract, Interface, Wallet, ZeroAddress, getAddress } from "ethers";
 import type { HardhatRuntimeEnvironment } from "hardhat/types/hre";
 import { schemaRegistryFor } from "./ensure_schemas.js";
-import { mergeInterfaces } from "./lib/extensions.js";
+import { RETIRED_SEED_FUNCTIONS, mergeInterfaces } from "./lib/extensions.js";
 import { ensureBaseSchemas } from "./lib/schemas.js";
 import {
   type SeedAddresses,
@@ -21,7 +21,7 @@ import {
  * Base schemas: everything in schemas/base-schemas.json is registered.
  * Access control (access-control plan, step 9):
  *   - multiPublish from a random address reverts with Unauthorized;
- *   - setEas isn't routed;
+ *   - setEas and the old string-publishLocalId multiPublish aren't routed;
  *   - getEas() is the expected EAS.
  * Executor routing:
  *   - getSeedExecutor() returns the new executor and EAS;
@@ -118,10 +118,13 @@ export async function verifyLiveAccessControl(
     return getAddress(parsed.args.caller) === stranger ? null : `Unauthorized(${parsed.args.caller}), expected ${stranger}`;
   });
 
-  await check("setEas is not routed", async () => {
-    const impl = await factoryContract.getImplementationForFunction(LEGACY_SET_EAS.getFunction("setEas")!.selector);
-    return impl === ZeroAddress ? null : `routes to ${impl}`;
-  });
+  for (const signature of ["setEas(address)", RETIRED_SEED_FUNCTIONS.getFunction("multiPublish")!.format("sighash")]) {
+    const label = signature.startsWith("multiPublish") ? "the string-publishLocalId multiPublish" : "setEas";
+    await check(`${label} is not routed`, async () => {
+      const impl = await factoryContract.getImplementationForFunction(RETIRED_SEED_FUNCTIONS.getFunction(signature)!.selector);
+      return impl === ZeroAddress ? null : `routes to ${impl}`;
+    });
+  }
 
   await check(`getEas() is ${eas}`, async () => {
     const actual = await accountContract.getEas();

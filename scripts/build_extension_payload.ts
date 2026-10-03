@@ -23,8 +23,6 @@ export default async function buildExtensionPayload(
         // Registered now (P7).
         replaceExtension: extensions.seedProtocolExtension,
         addExtension: extensions.seedExecutorRouterExtension,
-        // Deployed, not routed until the SDK switches to publishIndex.
-        notYetRouted: extensions.seedProtocolExtensionV2,
       },
       null,
       2,
