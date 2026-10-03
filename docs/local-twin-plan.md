@@ -190,18 +190,19 @@ These would let the overlay go away:
 
 **The one stand-in:** thirdweb's hosted in-app login. A fresh local key is connected to the exact smart-account options the SDK builds. Keys are fresh on every run, so it can be repeated against the same twin.
 
-**12 checks:**
+**13 checks:**
 1. The SDK's twin config.
-2. Interactive publish (a UserOp from the account to itself through the bundler), with a cross-reference.
+2. Interactive publish (a UserOp from the account to itself through the bundler), with a cross-reference, after the SDK's pre-send check.
 3. The EAS check, which sends nothing.
 4. The extension rejecting an unknown `publishLocalId`.
-5. The readiness check failing before the executor is installed.
-6. `installSeedExecutor` from the admin EOA.
-7. The readiness check passing after.
-8. An executor-only automation session key.
-9. Automation publish through the executor, with a cross-reference via `publishIndex`.
-10. The session key refused on the account.
-11. The owner revoking through EAS.
-12. The indexer showing both batches and the revocations.
+5. The SDK's pre-send check (as `createAttestations` runs it) passing a valid batch on the deployed account and rejecting that one with `PUBLISH_PREFLIGHT_FAILED`.
+6. The readiness check failing before the executor is installed.
+7. `installSeedExecutor` from the admin EOA.
+8. The readiness check passing after.
+9. An executor-only automation session key.
+10. Automation publish through the executor, with a cross-reference via `publishIndex`.
+11. The session key refused on the account.
+12. The owner revoking through EAS.
+13. The indexer showing both batches and the revocations.
 
-It imports SDK internals by path, so an SDK refactor can move them; the error names the missing module. Result against SDK `feat/configurable-eas-chains` @ `b72399a`: 12/12.
+It imports SDK internals by path, so an SDK refactor can move them; the error names the missing module. Result against SDK `feat/configurable-eas-chains` @ `b72399a`: 12/12; @ `06f8674` with the pre-send check: 13/13.

@@ -196,9 +196,21 @@ for (const s of Object.values(SCHEMAS)) {
 }
 
 let interactiveUids: string[] = [];
-await step("interactive publish with a cross-reference: account → multiPublish on itself (SDK encodeMultiPublish + fromThirdwebAccount; a UserOp through the twin bundler; deploys the account)", async () => {
-  const { transactionHash } = await fromThirdwebAccount(managed).txSender.sendTransaction(
-    C.encodeMultiPublish(managed.address, batch("interactive"), 5_000_000n));
+/** The pre-send check createAttestations runs on the interactive route before sending. */
+async function presendCheck(tx: unknown) {
+  await simulateCallFromAccount({
+    managedAddress: fromThirdwebAccount(managed).txSender.address,
+    tx,
+    action: "multiPublish",
+    code: "PUBLISH_PREFLIGHT_FAILED",
+    requireSimulation: false,
+  });
+}
+
+await step("interactive publish with a cross-reference: account → multiPublish on itself (SDK encodeMultiPublish + pre-send check + fromThirdwebAccount; a UserOp through the twin bundler; deploys the account)", async () => {
+  const tx = C.encodeMultiPublish(managed.address, batch("interactive"), 5_000_000n);
+  await presendCheck(tx);
+  const { transactionHash } = await fromThirdwebAccount(managed).txSender.sendTransaction(tx);
   interactiveUids = await checkBatch(transactionHash, managed.address);
   return "7 attestations by the account; author_ref set";
 });
@@ -223,6 +235,17 @@ await step("the extension rejects a cross-reference to an unknown publishLocalId
     throw new Error(`reverted with ${name ?? data ?? e.message}`);
   }
   throw new Error("succeeded");
+});
+
+await step("the SDK's pre-send check passes a valid publish on the deployed account and rejects the unknown publishLocalId (PUBLISH_PREFLIGHT_FAILED)", async () => {
+  await presendCheck(C.encodeMultiPublish(managed.address, batch("presend"), 5_000_000n));
+  try {
+    await presendCheck(C.encodeMultiPublish(managed.address, batch("bad", "no-such-request"), 5_000_000n));
+  } catch (e: any) {
+    if (e.code === "PUBLISH_PREFLIGHT_FAILED" && /UnknownPublishLocalId/.test(e.message)) return "valid batch passes; bad batch names UnknownPublishLocalId";
+    throw new Error(`rejected with ${e.code ?? ""} ${e.message}`);
+  }
+  throw new Error("the bad batch passed the check");
 });
 
 await step("readiness check fails before installSeedExecutor", async () => {

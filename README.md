@@ -138,6 +138,7 @@ It also starts the official EAS indexer (GraphQL on `:4000`, in Docker), seeded 
 - **`bun run twin:fund <address…> [--eth <n>]`** gives ETH to accounts on the running twin. There's no paymaster.
 - **`bun run twin:e2e [--sdk <path>]`** runs seed-protocol-sdk's own publish code (from `../seed-protocol-sdk` by default) against the running twin. It covers:
   - interactive and automation (executor) publishes, both with cross-references;
+  - the SDK's pre-send check, on a valid batch and on one the contract rejects;
   - the EAS check, the executor install and the readiness check;
   - session-key limits;
   - owner revocation;
