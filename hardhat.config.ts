@@ -53,9 +53,14 @@ const debugPublish = task('seed:debug-publish', 'Simulate multiPublish on an acc
   .setAction(() => import('./scripts/debug_multi_publish.js'))
   .build()
 
+const explainUserOp = task('seed:explain-userop', 'Explain why a UserOp in a handleOps transaction failed (read-only)')
+  .addOption({ name: 'tx', description: 'The handleOps transaction hash', defaultValue: '' })
+  .setAction(() => import('./scripts/explain_userop.js'))
+  .build()
+
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
-  tasks: [predictAddresses, ensureSchemas, extensionPayload, replaceExtension, verifyLive, publishSmoke, debugPublish],
+  tasks: [predictAddresses, ensureSchemas, extensionPayload, replaceExtension, verifyLive, publishSmoke, debugPublish, explainUserOp],
   paths: {
     sources: './contracts',
   },

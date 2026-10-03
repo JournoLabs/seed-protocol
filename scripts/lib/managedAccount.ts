@@ -219,12 +219,14 @@ export function createAccountHelpers({ ethers }: { ethers: { provider: Provider 
     signer,
     callData,
     bundler,
+    callGasLimit = 5_000_000n,
   }: {
     entryPoint: EntryPointLike;
     account: DynamicContract;
     signer: Signer;
     callData: string;
     bundler: Signer;
+    callGasLimit?: bigint;
   }) {
     const sender = await account.getAddress();
     const block = await ethers.provider.getBlock("latest");
@@ -235,7 +237,7 @@ export function createAccountHelpers({ ethers }: { ethers: { provider: Provider 
       nonce: await entryPoint.getNonce(sender, 0),
       initCode: "0x",
       callData,
-      callGasLimit: 5_000_000n,
+      callGasLimit,
       verificationGasLimit: 1_000_000n,
       preVerificationGas: 100_000n,
       maxFeePerGas: block!.baseFeePerGas! * 2n + priorityFee,

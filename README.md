@@ -159,6 +159,7 @@ All take `--network`. The rollout tasks read `ignition/parameters/<network>.json
 | `seed:verify-live --account <a>` | Static access-control and routing checks against a live account | no |
 | `seed:publish-smoke` | Admin and session-key publishes through the live routing (simulated networks only) | yes |
 | `seed:debug-publish --account <a> --payload <file>` | Simulates `multiPublish` and decodes the revert | no |
+| `seed:explain-userop --tx <hash>` | Explains a failed UserOp in a `handleOps` transaction: decodes its revert, or shows it ran out of gas and how much it needed | no |
 
 ### OP Sepolia rollout
 
