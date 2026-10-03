@@ -77,11 +77,13 @@ struct PropertyToUpdateWithSeed {
     bytes32 propertySchemaUid;
 }
 
+/// @dev Same field order as ISeedProtocol.PublishRequestData (SeedProtocolExtension), so one
+///      request shape encodes for both publishing paths.
 struct PublishRequestData {
     string localId;
     bytes32 seedUid;
-    bytes32 versionUid;
     bytes32 seedSchemaUid;
+    bytes32 versionUid;
     bytes32 versionSchemaUid;
     bool seedIsRevocable;
     MultiAttestationRequest[] listOfAttestations;

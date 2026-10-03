@@ -280,7 +280,7 @@ Step 9.1 would have deployed bytecode the tests never ran, at addresses other th
 - **Isolated builds (P3):** after the rename, the executor's and router extension's addresses moved although their sources didn't change: the code was byte-identical, only the metadata hash differed, because a non-isolated build's metadata depends on the rest of the project. Both profiles are now isolated; the executor and router extension then land where an isolated build put them before the rename, so unrelated files no longer move them. The 0.8.27/paris code is unchanged.
 - **Checks:** 119 tests pass (fewer than 136 because the string and V2 variants of each test collapsed into one); type-check clean; `rehearse:local` passes; `rehearse:op-sepolia --account 0x25B1…6FFd --admin 0x8436…47F8` passes at block 49,630,303 (29 selectors check out, `verify-live` 14/14, all three publishes).
 
-**Predicted OP Sepolia addresses** (deployer `0x00467f…4D84B`, salt label `seed-v1`, solc 0.8.27/paris, isolated). All `free`:
+**Predicted OP Sepolia addresses** *(executor and router extension superseded by the next entry)* (deployer `0x00467f…4D84B`, salt label `seed-v1`, solc 0.8.27/paris, isolated). All `free`:
 
 | Contract | Address |
 |----------|---------|
@@ -289,3 +289,15 @@ Step 9.1 would have deployed bytecode the tests never ran, at addresses other th
 | `SeedExecutorRouterExtension` | `0x24E7e7EAa628d1A448B720728bc2daF3255F5D6D` |
 
 **Gate for re-running 9.1–9.3:** the SDK release with §4.6, passing `twin:e2e`.
+
+**2026-10-03: SDK 0.6.9 work done; executor request struct aligned with the extension's.** The SDK developer reports `twin:e2e` 15/15 against their branch, and caught an error in our change request: the extension's `PublishRequestData` is ordered `seedUid, seedSchemaUid, versionUid, versionSchemaUid`, the executor's was `seedUid, versionUid, seedSchemaUid, versionSchemaUid`. Same types, so the same selector (`0x2a29fadc`), and a client using one struct for both paths would silently swap two fields. Neither contract was deployed, so the executor's struct now matches the extension's; `test/publishRequestShape.test.ts` fails if the two `multiPublish` inputs ever differ field by field (checked against the old order). The extension's address is unchanged (isolated builds); the executor and router extension moved. The SDK's `executorModuleAbi` must be reordered to match **before 0.6.9 is published**. 120 tests pass; `rehearse:local` passes; `rehearse:op-sepolia` on I3a passes at block 49,631,609.
+
+**Predicted OP Sepolia addresses** (deployer `0x00467f…4D84B`, salt label `seed-v1`, solc 0.8.27/paris, isolated). All `free`:
+
+| Contract | Address |
+|----------|---------|
+| `SeedProtocolExtension` | `0xde5F3133D9A4a4957ad44b4C8d44D0cfaf0A4A6B` |
+| `SeedProtocolExecutor` | `0x80562aeEe4F16473779b1474D8D32d114D302e94` |
+| `SeedExecutorRouterExtension` | `0xeE9CA71f3a91fC2832cc031318F0Bc4B3908D30a` |
+
+**Before 9.5:** permapress on 0.6.9, with `VITE_MODULAR_ACCOUNT_MODULE_CONTRACT` set to the new executor (its local `.env` still has the old `0x0434…`).

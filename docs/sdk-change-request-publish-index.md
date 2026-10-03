@@ -4,7 +4,7 @@
 
 ## Why
 
-The contracts now have one Seed extension, `SeedProtocolExtension`, and its `multiPublish` takes the cross-reference target as an index (`publishIndex`, the target's position in the batch) instead of a string (`publishLocalId`). It's the contract that used to be `SeedProtocolExtensionV2`, and its request struct is the same one `SeedProtocolExecutor` already takes.
+The contracts now have one Seed extension, `SeedProtocolExtension`, and its `multiPublish` takes the cross-reference target as an index (`publishIndex`, the target's position in the batch) instead of a string (`publishLocalId`). It's the contract that used to be `SeedProtocolExtensionV2`.
 
 | | `multiPublish` selector | Routed after the rollout? |
 |---|---|---|
@@ -22,7 +22,7 @@ Nothing changes in the SDK's data model: `localId` / `seedLocalId` stay strings 
 `packages/publish/src/helpers/contracts/index.ts`, `helpers/abi/publisher.ts`
 
 - Keep the input type (`MultiPublishRequest`, with string `localId` and `propertiesToUpdate[].publishLocalId`), so `createAttestations.ts:396` and other callers don't change.
-- Encode with the struct `encodeExecutorMultiPublish` already uses: `localId` stays `string`; `propertiesToUpdate` becomes `(uint256 publishIndex, bytes32 propertySchemaUid)[]`. Update `multiPublishAbi` accordingly (or reuse the executor ABI's tuple). Expected selector: `0x2a29fadc`.
+- Encode with the extension's struct: `localId` stays `string`; `propertiesToUpdate` becomes `(uint256 publishIndex, bytes32 propertySchemaUid)[]`. Expected selector: `0x2a29fadc`. *(Corrected: this originally said to reuse the executor's struct. Its field order differed; see the follow-up below.)*
 - Compute indexes inside the encoder, from the same `requests` array it encodes. Never earlier, never from a different array.
 
 ### 2. One strict localId → index helper, used by both encoders
@@ -64,7 +64,23 @@ Predicted, all CREATE2 from the Seed deployer; confirmed when deployed:
 | Contract | OP Sepolia |
 |---|---|
 | `SeedProtocolExtension` | `0xde5F3133D9A4a4957ad44b4C8d44D0cfaf0A4A6B` |
-| `SeedProtocolExecutor` | `0xC8FF756ED1fC96C604FBFc356B1379262411338B` |
-| `SeedExecutorRouterExtension` | `0x24E7e7EAa628d1A448B720728bc2daF3255F5D6D` |
+| `SeedProtocolExecutor` | `0x80562aeEe4F16473779b1474D8D32d114D302e94` |
+| `SeedExecutorRouterExtension` | `0xeE9CA71f3a91fC2832cc031318F0Bc4B3908D30a` |
 
 The SDK doesn't hardcode any of them; the executor address goes into config after step 9.7. Contracts deployed earlier on 2026-10-03 (`0x7AaC…`, `0x2ee2…`, `0xF245…`, `0x8eAe…`) are superseded and won't be routed.
+
+## Follow-up: executor struct now matches the extension's
+
+Thanks for catching the field order. We've aligned the structs rather than documenting the difference: `SeedProtocolExecutor`'s `PublishRequestData` is now ordered like the extension's.
+
+```
+string localId, bytes32 seedUid, bytes32 seedSchemaUid, bytes32 versionUid, bytes32 versionSchemaUid,
+bool seedIsRevocable, MultiAttestationRequest[] listOfAttestations, PropertyToUpdateWithSeed[] propertiesToUpdate
+```
+
+**Needed before publishing 0.6.9:**
+- Reorder the request tuple in `executorModuleAbi`'s `multiPublish` (`helpers/abi/executor.ts`) to the order above.
+- Flip your field-position unit test to assert both encoders produce the same field order.
+- Re-run `twin:e2e` against seed-protocol `main` (it redeploys the new executor). The automation publish checks the author seed's schema, so a leftover swap fails there.
+
+The executor's and router extension's addresses changed (table above); the extension's didn't. Your release notes draft reads well; perhaps add one line: "the executor's request struct now uses the extension's field order."
