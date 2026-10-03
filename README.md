@@ -39,6 +39,7 @@ CI (`.github/workflows/test.yml`) runs build, type-check and tests on pushes to 
 | `test/fixtures/` | Shared fixtures: EAS + schemas, the thirdweb ManagedAccount stack (EntryPoint, factory, session keys, UserOps), gas payloads |
 | `ignition/modules/` | Ignition modules: `SeedProtocol` (what gets deployed) and `LocalStack` (a stand-in OP Sepolia for rehearsals) |
 | `ignition/parameters/` | Per-network module parameters, plus `SeedRollout.factory` for the rollout tasks |
+| `infra/eas-indexer/` | The official EAS indexer, pinned, for the twin |
 | `ignition/deployments/` | Ignition's deployment records: the one place deployed addresses live |
 | `scripts/` | Rollout tasks and the rehearsal driver (see [Deployment](#deployment)); shared code in `scripts/lib/` |
 | `schemas/base-schemas.json` | The EAS schemas the protocol itself relies on, with their UIDs (for the SDK too) |
@@ -127,7 +128,13 @@ This is a local stand-in for production, for developing the SDK and apps end to 
 - funded test accounts;
 - a local ERC-4337 bundler (alto) on `:4337`.
 
-It then smoke-tests the publish paths and writes `.twin/twin.json`, with every endpoint, address, schema UID and test key the SDK and apps need. Ctrl-C stops it. It needs `OPTIMISM_SEPOLIA_RPC_URL`.
+It also starts the official EAS indexer (GraphQL on `:4000`, in Docker), seeded with OP Sepolia's data up to the fork. It then smoke-tests the publish paths and writes `.twin/twin.json`, with every endpoint, address, schema UID and test key the SDK and apps need. Ctrl-C stops it all.
+
+- **Needs:** `OPTIMISM_SEPOLIA_RPC_URL`, and Docker for the indexer.
+- **Options:**
+  - `--light-index` seeds schemas and names only;
+  - `--no-indexer` skips the indexer;
+  - `--fork-block <n|latest>` moves the fork.
 
 ### Tasks
 

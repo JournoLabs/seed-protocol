@@ -1,0 +1,23 @@
+# The twin's EAS indexer: Postgres + the indexer's GraphQL on :4000.
+# Throwaway data: `bun run twin:up` starts it with a fresh database every time.
+name: seed-twin-indexer
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: eas-index
+    volumes: [pgdata:/var/lib/postgresql/data]
+  indexer:
+    build: .
+    depends_on: [postgres]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/eas-index
+      CHAIN_ID: ${CHAIN_ID:-31337}
+      EAS_CUSTOM_CHAIN: ${EAS_CUSTOM_CHAIN:-}
+      POLLING_INTERVAL: ${POLLING_INTERVAL:-5000}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["${EAS_INDEXER_PORT:-4000}:4000"]
+volumes:
+  pgdata:

@@ -8,14 +8,29 @@
  *   3. Funded test accounts (fresh keys, kept in .twin/keys.json across runs).
  *   4. A local ERC-4337 bundler (alto) on the fork's EntryPoint v0.6.
  *   5. Smoke tests: the contract paths (seed:publish-smoke) and a UserOp through the bundler.
- *   6. .twin/twin.json: endpoints, addresses, schemas and accounts, for the SDK and apps.
+ *   6. The official EAS indexer (infra/eas-indexer, Docker), seeded with OP Sepolia's
+ *      pre-fork schemas, schema names and attestations from easscan (cached per fork block).
+ *   7. .twin/twin.json: endpoints, addresses, schemas and accounts, for the SDK and apps.
  *
- * Options: --fork-block <number|latest> (default: the pinned TWIN_FORK_BLOCK below).
+ * Options:
+ *   --fork-block <number|latest>  default: the pinned TWIN_FORK_BLOCK below
+ *   --light-index                 seed the indexer with schemas and names only, no attestations
+ *   --no-indexer                  skip the indexer (no Docker needed)
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Contract, Interface, JsonRpcProvider, NonceManager, Wallet, ZeroAddress, ZeroHash, parseEther, toQuantity } from "ethers";
 import { sendUserOpViaBundler } from "./lib/bundler.js";
+import {
+  dockerAvailable,
+  graphql,
+  insertSeedData,
+  loadSeedData,
+  startIndexer,
+  stopIndexer,
+  tablesExist,
+  waitForGraphql,
+} from "./lib/easIndexer.js";
 import { buildPublishRequests } from "./lib/managedAccount.js";
 import { ROOT, RPC, deployedAddresses, firstAccount, hardhat, rpc, rpcUp, spawnLogged, startNode, waitForRpc } from "./lib/orchestration.js";
 import { BASE_SCHEMAS, schemaUid } from "./lib/schemas.js";
@@ -24,6 +39,7 @@ import { BASE_SCHEMAS, schemaUid } from "./lib/schemas.js";
 const TWIN_FORK_BLOCK = 49_590_000;
 const BUNDLER_PORT = 4337;
 const BUNDLER_URL = `http://127.0.0.1:${BUNDLER_PORT}`;
+const INDEXER_GRAPHQL_URL = "http://localhost:4000/graphql";
 const ENTRY_POINT_V06 = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
 const DEPLOYMENT_ID = "twin";
 const PARAMETERS = "ignition/parameters/optimism_sepolia.json";
@@ -71,13 +87,18 @@ async function up(args: string[]) {
     return i === -1 ? undefined : args[i + 1];
   };
   const block = await forkBlock(option("fork-block"));
+  const withIndexer = !args.includes("--no-indexer");
+  const lightIndex = args.includes("--light-index");
+  if (withIndexer && !dockerAvailable()) throw new Error("The EAS indexer needs Docker running (or pass --no-indexer).");
   const keys = loadKeys();
   if (await rpcUp(BUNDLER_URL)) throw new Error(`Something is already listening on ${BUNDLER_URL}; stop it first.`);
   rmSync(path.join(ROOT, "ignition/deployments", DEPLOYMENT_ID), { recursive: true, force: true });
 
   const children = [await startNode(["--network", "op_sepolia_twin"], { log: "twin-node.log", env: { TWIN_FORK_BLOCK: block } })];
+  let indexerStarted = false;
   const stop = () => {
     for (const child of children) child.kill();
+    if (indexerStarted) stopIndexer();
   };
   process.on("SIGINT", () => {
     console.log("\nStopping the twin.");
@@ -161,11 +182,45 @@ async function up(args: string[]) {
     if (!userOp.success) throw new Error(`Bundler smoke UserOp failed (tx ${userOp.transactionHash})`);
     console.log(`ok    UserOp ${userOp.userOpHash} included in ${userOp.transactionHash}`);
 
-    // 6. What the SDK and apps need.
+    // 6. The EAS indexer, from the block after the fork, seeded with what came before it.
+    if (withIndexer) {
+      const forkTimestamp = Number((await provider.getBlock(Number(block)))!.timestamp);
+      console.log(`\nLoading the indexer seed (OP Sepolia up to block ${block}${lightIndex ? ", schemas and names only" : ""})…`);
+      const seedData = await loadSeedData(Number(block), forkTimestamp, { light: lightIndex });
+      console.log(`Starting the EAS indexer (infra/eas-indexer)…`);
+      indexerStarted = true;
+      startIndexer({
+        chainId: 31337,
+        eas: parameters.SeedProtocol.eas,
+        schemaRegistry: String(schemaRegistry.target),
+        startBlock: Number(block) + 1,
+        rpcUrl: "http://host.docker.internal:8545",
+      });
+      // The indexer creates its tables on start. Until the seed lands, it retries any batch
+      // that uses a pre-fork schema; the next poll after seeding goes through.
+      for (let i = 0; !tablesExist(); i++) {
+        if (i > 180) throw new Error("The EAS indexer never created its tables");
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      insertSeedData(seedData);
+      await waitForGraphql(INDEXER_GRAPHQL_URL);
+      for (let i = 0; ; i++) {
+        const { attestations } = await graphql(INDEXER_GRAPHQL_URL,
+          `query($a: String) { attestations(where: { attester: { equals: $a } }) { id } }`, { a: userOp.sender });
+        if (attestations.length >= 3) break;
+        if (i > 60) throw new Error("The EAS indexer didn't index the smoke attestations within a minute");
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      console.log(`ok    EAS indexer at ${INDEXER_GRAPHQL_URL}: ${seedData.schemas.length} schemas, ` +
+        `${seedData.schemaNames.length} names${seedData.attestations ? `, ${seedData.attestations.length} attestations` : ""} seeded; smoke attestations indexed`);
+    }
+
+    // 7. What the SDK and apps need.
     const twin = {
       chainId: 31337,
       rpcUrl: RPC,
       bundlerUrl: BUNDLER_URL,
+      easGraphqlUrl: withIndexer ? INDEXER_GRAPHQL_URL : null,
       forkedFrom: { chain: "optimism-sepolia", chainId: 11155420, block: Number(block) },
       entryPoint: ENTRY_POINT_V06,
       contracts: {
@@ -189,13 +244,14 @@ Twin is up (OP Sepolia @ ${block}, chain id 31337). Ctrl-C to stop.
 
   RPC        ${RPC}
   Bundler    ${BUNDLER_URL}   (EntryPoint v0.6 ${ENTRY_POINT_V06})
+  EAS index  ${withIndexer ? `${INDEXER_GRAPHQL_URL}   (official eas-indexing-service)` : "not started (--no-indexer)"}
   Factory    ${factoryAddress}
   EAS        ${twin.contracts.eas}
   Accounts   ${accounts.map(({ name, wallet }) => `${name} ${wallet.address}`).join("\n             ")}
              (100 ETH each; keys in .twin/keys.json)
 
 Everything above, for the SDK and apps: .twin/twin.json
-Not started here: the EAS indexer and the seed gateway (see docs/local-twin-plan.md).`);
+Not started here: the seed gateway (run ../seed-protocol-server alongside).`);
   } catch (e) {
     stop();
     throw e;
@@ -207,6 +263,6 @@ const [command, ...rest] = process.argv.slice(2);
 if (command === "up") {
   await up(rest);
 } else {
-  console.error("usage: bun scripts/twin.ts up [--fork-block <number|latest>]");
+  console.error("usage: bun scripts/twin.ts up [--fork-block <number|latest>] [--light-index | --no-indexer]");
   process.exit(2);
 }
