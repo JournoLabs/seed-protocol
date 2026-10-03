@@ -260,3 +260,9 @@ These change if the deployer (I7), the salt label, the compiler settings (P3) or
 - **Result:** one `multicall` replaced `SeedProtocolExtension` (dropping `setEas`) and added `SeedExecutorRouterExtension`, and the routing read-back passed. `verify-live` passed all 12 checks on the factory's first account, `0x67a4881391aD8B1f197C6bF7a556d70f87C3a786`. Admin and session-key (UserOp) publishes passed on a fresh account created on the real factory.
 - **Fixed on the way:** `verify-live`'s random-caller `eth_call` failed on the forking node, which charges the OP L1 data fee up front even on calls. It now gives the caller a balance with a state override.
 - **For I5:** the live extension's `metadataURI` is the IPFS URI above, and the rollout writes `""` unless `--metadata-uri` is passed.
+
+**2026-10-03: pre-deploy checks, and a build-profile fix.** The OP Sepolia RPC (chain 11155420), the Etherscan V2 API key and `DEV_KEY` (→ `0x00467f…4D84B`, 0.13 ETH) all check out. `seed:predict-addresses` then showed four *different* addresses, because Hardhat 3 derived the `production` profile, which `ignition deploy` builds on live networks, from the short-form `solidity` config:
+- it kept only the optimizer settings, so `evmVersion` fell back to solc's default `cancun`, contrary to P3;
+- it compiled with `isolated: true`, which changes each contract's metadata hash, and so its CREATE2 address, even when the code is the same.
+
+Step 9.1 would have deployed bytecode the tests never ran, at addresses other than the ones above. `hardhat.config.ts` now defines both profiles, identically (`paris`, not isolated). `test/buildProfiles.test.ts` fails if they diverge again. With either profile, `seed:predict-addresses` gives exactly the table above, all `free`; 136 tests pass.
