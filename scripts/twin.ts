@@ -126,6 +126,11 @@ async function up(args: string[]) {
 
     // 4. The bundler. --max-block-range keeps its log queries after the fork block; earlier
     //    ranges are forwarded to the upstream RPC, which may refuse them (Alchemy free tier).
+    //    --enable-cors lets browser apps on another origin call it (permapress's dev build).
+    //    --v6-call-gas-limit-multiplier: alto's callGasLimit for a deeply nested multiPublish
+    //    can come in ~5% under what it needs (a permapress publish ran out of gas inside EAS),
+    //    so it's padded by 20%. Unused gas isn't charged; the account just needs a little more
+    //    ETH for the prefund.
     const bundler = spawnLogged(path.join(ROOT, "node_modules/.bin/alto"), [
       "--rpc-url", RPC,
       "--entrypoints", ENTRY_POINT_V06,
@@ -135,6 +140,8 @@ async function up(args: string[]) {
       "--safe-mode", "false",
       "--max-block-range", "5",
       "--port", String(BUNDLER_PORT),
+      "--enable-cors", "true",
+      "--v6-call-gas-limit-multiplier", "120",
     ], "twin-bundler.log");
     children.push(bundler.child);
     console.log(`\nStarting the bundler (log: ${bundler.logFile})`);
