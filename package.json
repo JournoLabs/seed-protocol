@@ -14,7 +14,8 @@
     "coverage": "hardhat test --coverage",
     "rehearse:local": "bun scripts/rehearse.ts local",
     "rehearse:op-sepolia": "bun scripts/rehearse.ts op-sepolia",
-    "twin:up": "bun scripts/twin.ts up"
+    "twin:up": "bun scripts/twin.ts up",
+    "twin:fund": "bun scripts/twin.ts fund"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.2.0",

@@ -19,7 +19,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { Contract, Interface, JsonRpcProvider, NonceManager, Wallet, ZeroAddress, ZeroHash, parseEther, toQuantity } from "ethers";
+import { Contract, Interface, JsonRpcProvider, NonceManager, Wallet, ZeroAddress, ZeroHash, formatEther, getAddress, parseEther, toQuantity } from "ethers";
 import { sendUserOpViaBundler } from "./lib/bundler.js";
 import {
   dockerAvailable,
@@ -259,10 +259,32 @@ Not started here: the seed gateway (run ../seed-protocol-server alongside).`);
   await new Promise(() => {}); // Run until Ctrl-C.
 }
 
+/**
+ * `bun run twin:fund <address> [more…] [--eth <amount>]`: sets balances on the running twin.
+ * There's no paymaster (T2), so anything that sends transactions needs ETH: an EOA, or a
+ * smart account (even before it's deployed) that pays for its own UserOps.
+ */
+async function fund(args: string[]) {
+  let amount = parseEther("10");
+  const addresses: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--eth") amount = parseEther(args[++i]);
+    else addresses.push(args[i]);
+  }
+  if (!addresses.length) throw new Error("usage: bun run twin:fund <address> [more…] [--eth <amount>]");
+  if (!(await rpcUp())) throw new Error(`The twin isn't running at ${RPC} (bun run twin:up).`);
+  for (const address of addresses) {
+    await rpc("hardhat_setBalance", [getAddress(address), toQuantity(amount)]);
+    console.log(`${getAddress(address)}: ${formatEther(amount)} ETH`);
+  }
+}
+
 const [command, ...rest] = process.argv.slice(2);
 if (command === "up") {
   await up(rest);
+} else if (command === "fund") {
+  await fund(rest);
 } else {
-  console.error("usage: bun scripts/twin.ts up [--fork-block <number|latest>] [--light-index | --no-indexer]");
+  console.error("usage: bun scripts/twin.ts up [--fork-block <number|latest>] [--light-index | --no-indexer]\n       bun scripts/twin.ts fund <address> [more…] [--eth <amount>]");
   process.exit(2);
 }

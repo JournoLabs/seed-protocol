@@ -135,6 +135,8 @@ It also starts the official EAS indexer (GraphQL on `:4000`, in Docker), seeded 
   - `--light-index` seeds schemas and names only;
   - `--no-indexer` skips the indexer;
   - `--fork-block <n|latest>` moves the fork.
+- **`bun run twin:fund <address…> [--eth <n>]`** gives ETH to accounts on the running twin. There's no paymaster.
+- **For the SDK and apps:** see [docs/twin-thirdweb.md](docs/twin-thirdweb.md) for connecting thirdweb wallets.
 
 ### Tasks
 
