@@ -56,7 +56,7 @@ async function sdkThirdweb(specifier: string): Promise<any> {
 
 const { initPublish } = await sdk("config");
 const { seedTwinConfig } = await sdk("helpers/seedTwin");
-const { getManagedAccountWallet, getModularAccountWallet, getClient } = await sdk("helpers/thirdweb");
+const { getManagedAccountWallet, getModularAccountWallet, getClient, deployManagedAccountViaFactory } = await sdk("helpers/thirdweb");
 const { getPublishThirdwebChain } = await sdk("helpers/thirdwebChain");
 const { fromThirdwebAccount } = await sdk("helpers/adapters/thirdwebAccount");
 const C = await sdk("helpers/contracts/index");
@@ -196,8 +196,13 @@ for (const s of Object.values(SCHEMAS)) {
 }
 
 let interactiveUids: string[] = [];
-/** The pre-send check createAttestations runs on the interactive route before sending. */
+/**
+ * The pre-send check createAttestations runs on the interactive route before sending. The flow
+ * only reaches it with a deployed account (an eth_call to an address with no code passes
+ * anything), so this refuses to run it on one.
+ */
 async function presendCheck(tx: unknown) {
+  if ((await provider.getCode(managed.address)) === "0x") throw new Error("pre-send check on an undeployed account");
   await simulateCallFromAccount({
     managedAddress: fromThirdwebAccount(managed).txSender.address,
     tx,
@@ -207,7 +212,12 @@ async function presendCheck(tx: unknown) {
   });
 }
 
-await step("interactive publish with a cross-reference: account → multiPublish on itself (SDK encodeMultiPublish + pre-send check + fromThirdwebAccount; a UserOp through the twin bundler; deploys the account)", async () => {
+await step("the SDK deploys the account from the admin EOA before publishing (deployManagedAccountViaFactory, as the modular publish prep does)", async () => {
+  await deployManagedAccountViaFactory({ adminAddress: adminEoa.address, signingAccount: adminEoa });
+  if ((await provider.getCode(managed.address)) === "0x") throw new Error(`no code at ${managed.address}`);
+});
+
+await step("interactive publish with a cross-reference: account → multiPublish on itself (SDK encodeMultiPublish + pre-send check + fromThirdwebAccount; a UserOp through the twin bundler)", async () => {
   const tx = C.encodeMultiPublish(managed.address, batch("interactive"), 5_000_000n);
   await presendCheck(tx);
   const { transactionHash } = await fromThirdwebAccount(managed).txSender.sendTransaction(tx);

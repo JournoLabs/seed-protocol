@@ -190,19 +190,20 @@ These would let the overlay go away:
 
 **The one stand-in:** thirdweb's hosted in-app login. A fresh local key is connected to the exact smart-account options the SDK builds. Keys are fresh on every run, so it can be repeated against the same twin.
 
-**13 checks:**
+**14 checks:**
 1. The SDK's twin config.
-2. Interactive publish (a UserOp from the account to itself through the bundler), with a cross-reference, after the SDK's pre-send check.
-3. The EAS check, which sends nothing.
-4. The extension rejecting an unknown `publishLocalId`.
-5. The SDK's pre-send check (as `createAttestations` runs it) passing a valid batch on the deployed account and rejecting that one with `PUBLISH_PREFLIGHT_FAILED`.
-6. The readiness check failing before the executor is installed.
-7. `installSeedExecutor` from the admin EOA.
-8. The readiness check passing after.
-9. An executor-only automation session key.
-10. Automation publish through the executor, with a cross-reference via `publishIndex`.
-11. The session key refused on the account.
-12. The owner revoking through EAS.
-13. The indexer showing both batches and the revocations.
+2. The SDK deploying the account from the admin EOA (`deployManagedAccountViaFactory`), as the modular publish prep does before any publish.
+3. Interactive publish (a UserOp from the account to itself through the bundler), with a cross-reference, after the SDK's pre-send check.
+4. The EAS check, which sends nothing.
+5. The extension rejecting an unknown `publishLocalId`.
+6. The SDK's pre-send check (as `createAttestations` runs it) passing a valid batch and rejecting that one with `PUBLISH_PREFLIGHT_FAILED`. The SDK only runs it on deployed accounts (an `eth_call` to an address with no code passes anything), so `twin:e2e` refuses to run it on an undeployed one.
+7. The readiness check failing before the executor is installed.
+8. `installSeedExecutor` from the admin EOA.
+9. The readiness check passing after.
+10. An executor-only automation session key.
+11. Automation publish through the executor, with a cross-reference via `publishIndex`.
+12. The session key refused on the account.
+13. The owner revoking through EAS.
+14. The indexer showing both batches and the revocations.
 
-It imports SDK internals by path, so an SDK refactor can move them; the error names the missing module. Result against SDK `feat/configurable-eas-chains` @ `b72399a`: 12/12; @ `06f8674` with the pre-send check: 13/13.
+It imports SDK internals by path, so an SDK refactor can move them; the error names the missing module. Result against SDK `feat/configurable-eas-chains` @ `b72399a`: 12/12; @ `72211c6` with the pre-send check: 14/14.
