@@ -176,3 +176,32 @@ These would let the overlay go away:
 - an env-defined chain config;
 - a lockfile and Node 20 in the Dockerfile;
 - optionally, fetching an unknown schema from the registry instead of failing the batch, which helps anyone indexing from a later start block.
+
+## 10. `twin:e2e`: the SDK against the twin (2026-10-03)
+
+`bun run twin:e2e [--sdk <path>]` loads seed-protocol-sdk's publish package from source and runs its own code against a running twin.
+
+**What it uses from the SDK:**
+- wallet config (`seedTwinConfig`, `getManagedAccountWallet`/`getModularAccountWallet`);
+- encoders (`encodeMultiPublish`, `encodeExecutorMultiPublish`, `encodeInstallSeedExecutor`, `encodeEasMultiRevoke`);
+- the transaction adapter (`fromThirdwebAccount`);
+- checks (`ensureManagedAccountEasConfigured`, `assertExecutorModuleReadyForAccount`, `simulateCallFromAccount`);
+- automation session-key permissions.
+
+**The one stand-in:** thirdweb's hosted in-app login. A fresh local key is connected to the exact smart-account options the SDK builds. Keys are fresh on every run, so it can be repeated against the same twin.
+
+**12 checks:**
+1. The SDK's twin config.
+2. Interactive publish (a UserOp from the account to itself through the bundler), with a cross-reference.
+3. The EAS check, which sends nothing.
+4. The extension rejecting an unknown `publishLocalId`.
+5. The readiness check failing before the executor is installed.
+6. `installSeedExecutor` from the admin EOA.
+7. The readiness check passing after.
+8. An executor-only automation session key.
+9. Automation publish through the executor, with a cross-reference via `publishIndex`.
+10. The session key refused on the account.
+11. The owner revoking through EAS.
+12. The indexer showing both batches and the revocations.
+
+It imports SDK internals by path, so an SDK refactor can move them; the error names the missing module. Result against SDK `feat/configurable-eas-chains` @ `b72399a`: 12/12.

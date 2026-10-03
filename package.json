@@ -15,7 +15,8 @@
     "rehearse:local": "bun scripts/rehearse.ts local",
     "rehearse:op-sepolia": "bun scripts/rehearse.ts op-sepolia",
     "twin:up": "bun scripts/twin.ts up",
-    "twin:fund": "bun scripts/twin.ts fund"
+    "twin:fund": "bun scripts/twin.ts fund",
+    "twin:e2e": "bun scripts/twin_e2e.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.2.0",
