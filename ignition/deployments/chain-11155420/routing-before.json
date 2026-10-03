@@ -1,0 +1,147 @@
+{
+  "factory": "0x76F47D88bfaf670F5208911181fCDC0E160cb16d",
+  "chainId": "11155420",
+  "blockNumber": 49632888,
+  "extensionRoleHolders": [
+    "0x00467fe2608Dff148C83009927E4e7234Bc4D84B"
+  ],
+  "extensions": [
+    {
+      "name": "AccountExtension",
+      "metadataURI": "ipfs://QmNQ2djT2u4my5xpKPgJMnQEpoNjYZE8ugpLndvgEJBb3X",
+      "implementation": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+      "functions": [
+        {
+          "selector": "0x4a58db19",
+          "signature": "addDeposit()"
+        },
+        {
+          "selector": "0xe8a3d485",
+          "signature": "contractURI()"
+        },
+        {
+          "selector": "0xb61d27f6",
+          "signature": "execute(address,uint256,bytes)"
+        },
+        {
+          "selector": "0x47e1da2a",
+          "signature": "executeBatch(address[],uint256[],bytes[])"
+        },
+        {
+          "selector": "0x8b52d723",
+          "signature": "getAllActiveSigners()"
+        },
+        {
+          "selector": "0xe9523c97",
+          "signature": "getAllAdmins()"
+        },
+        {
+          "selector": "0xd42f2f35",
+          "signature": "getAllSigners()"
+        },
+        {
+          "selector": "0x399b77da",
+          "signature": "getMessageHash(bytes32)"
+        },
+        {
+          "selector": "0xf15d424e",
+          "signature": "getPermissionsForSigner(address)"
+        },
+        {
+          "selector": "0x7dff5a79",
+          "signature": "isActiveSigner(address)"
+        },
+        {
+          "selector": "0x24d7806c",
+          "signature": "isAdmin(address)"
+        },
+        {
+          "selector": "0x1626ba7e",
+          "signature": "isValidSignature(bytes32,bytes)"
+        },
+        {
+          "selector": "0xbc197c81",
+          "signature": "onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"
+        },
+        {
+          "selector": "0xf23a6e61",
+          "signature": "onERC1155Received(address,address,uint256,uint256,bytes)"
+        },
+        {
+          "selector": "0x150b7a02",
+          "signature": "onERC721Received(address,address,uint256,bytes)"
+        },
+        {
+          "selector": "0x938e3d7b",
+          "signature": "setContractURI(string)"
+        },
+        {
+          "selector": "0x5892e236",
+          "signature": "setPermissionsForSigner((address,uint8,address[],uint256,uint128,uint128,uint128,uint128,bytes32),bytes)"
+        },
+        {
+          "selector": "0x01ffc9a7",
+          "signature": "supportsInterface(bytes4)"
+        },
+        {
+          "selector": "0xa9082d84",
+          "signature": "verifySignerPermissionRequest((address,uint8,address[],uint256,uint128,uint128,uint128,uint128,bytes32),bytes)"
+        },
+        {
+          "selector": "0x4d44560d",
+          "signature": "withdrawDepositTo(address,uint256)"
+        }
+      ]
+    },
+    {
+      "name": "SeedProtocolExtension",
+      "metadataURI": "ipfs://QmfNsWGDnnKVw5bYuWnvy9j13bhv4vH3XeaJH6SuDLPjyw",
+      "implementation": "0xe8A567d96BaaF98805A186bb825cC0b2430b607A",
+      "functions": [
+        {
+          "selector": "0x31e19cb8",
+          "signature": "multiPublish((string,bytes32,bytes32,bytes32,bytes32,bool,(bytes32,(address,uint64,bool,bytes32,bytes,uint256)[])[],(string,bytes32)[])[])"
+        },
+        {
+          "selector": "0xb90b6e0d",
+          "signature": "setEas(address)"
+        },
+        {
+          "selector": "0xd5f5127d",
+          "signature": "getEas()"
+        }
+      ]
+    }
+  ],
+  "routing": {
+    "0x01ffc9a7": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x112d3a7d": "0x0000000000000000000000000000000000000000",
+    "0x150b7a02": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x1626ba7e": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x24d7806c": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x2a29fadc": "0x0000000000000000000000000000000000000000",
+    "0x31e19cb8": "0xe8A567d96BaaF98805A186bb825cC0b2430b607A",
+    "0x399b77da": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x47e1da2a": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x4a58db19": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x4d44560d": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x5892e236": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x6ecad544": "0x0000000000000000000000000000000000000000",
+    "0x79dfb1ee": "0x0000000000000000000000000000000000000000",
+    "0x7dff5a79": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x8b52d723": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0x938e3d7b": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0xa9082d84": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0xa9ed893c": "0x0000000000000000000000000000000000000000",
+    "0xb61d27f6": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0xb90b6e0d": "0xe8A567d96BaaF98805A186bb825cC0b2430b607A",
+    "0xbc197c81": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0xd42f2f35": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0xd5f5127d": "0xe8A567d96BaaF98805A186bb825cC0b2430b607A",
+    "0xd691c964": "0x0000000000000000000000000000000000000000",
+    "0xe8a3d485": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0xe9523c97": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0xf15d424e": "0xCD68591e4F9FA55c4a9938A5574E22517047a055",
+    "0xf23a6e61": "0xCD68591e4F9FA55c4a9938A5574E22517047a055"
+  }
+}

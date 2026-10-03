@@ -66,6 +66,13 @@ describe("seed:verify-live", function () {
     expect(failures.some((f) => f.startsWith("account belongs to the factory"))).to.equal(false);
   });
 
+  it("reports an undeployed account once instead of failing every check", async function () {
+    const setup = await networkHelpers.loadFixture(oldRegistryFixture);
+    const failures = await verify({ ...setup, accountAddress: setup.stranger.address });
+    expect(failures).to.have.length(1);
+    expect(failures[0]).to.include("has no code");
+  });
+
   it("fails when pointed at the wrong factory", async function () {
     const setup = await networkHelpers.loadFixture(oldRegistryFixture);
     const failures = await verify(setup, setup.stranger.address);

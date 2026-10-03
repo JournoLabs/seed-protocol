@@ -75,6 +75,14 @@ export async function verifyLiveAccessControl(
   const accountContract = new Contract(account, accountInterface, ethers.provider);
   const factoryContract = new Contract(factory, await abi("ManagedAccountFactory"), ethers.provider);
 
+  // A counterfactual account (created by the SDK on first publish) has no code: every call
+  // would come back empty, so say that instead of failing each check on it.
+  if ((await ethers.provider.getCode(account)) === "0x") {
+    const problem = `account ${account} has no code: it isn't deployed yet (a counterfactual account is deployed on its first publish)`;
+    console.log(`FAIL  ${problem}`);
+    return [problem];
+  }
+
   const failures: string[] = [];
   async function check(label: string, fn: () => Promise<string | null>) {
     let problem: string | null;

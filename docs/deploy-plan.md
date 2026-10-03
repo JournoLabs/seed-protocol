@@ -301,3 +301,17 @@ Step 9.1 would have deployed bytecode the tests never ran, at addresses other th
 | `SeedExecutorRouterExtension` | `0xeE9CA71f3a91fC2832cc031318F0Bc4B3908D30a` |
 
 **Before 9.5:** permapress on 0.6.9, with `VITE_MODULAR_ACCOUNT_MODULE_CONTRACT` set to the new executor (its local `.env` still has the old `0x0434…`).
+
+**2026-10-03: OP Sepolia rollout, steps 9.1–9.4 done** (SDK 0.6.9 published; seed-protocol `6ee89c1`).
+- **9.1:** deployed from `DEV_KEY` by CREATE2, at the predicted addresses, all verified on Etherscan (Ignition record: `ignition/deployments/chain-11155420/`):
+
+  | Contract | Address |
+  |----------|---------|
+  | `SeedProtocolExtension` | `0xde5F3133D9A4a4957ad44b4C8d44D0cfaf0A4A6B` |
+  | `SeedProtocolExecutor` | `0x80562aeEe4F16473779b1474D8D32d114D302e94` |
+  | `SeedExecutorRouterExtension` | `0xeE9CA71f3a91fC2832cc031318F0Bc4B3908D30a` |
+- **9.2:** the dry run at block 49,632,813 matched the rehearsals.
+- **9.3:** one `multicall` from `DEV_KEY`, tx `0xce3b77ed0a1805f526cb9766e8d1e46c745cecf0704989ee58a1c186734be314` (block 49,632,889): `SeedProtocolExtension` `0xe8A5…607A` → `0xde5F…4A6B` with `[multiPublish, getEas]` (the string `multiPublish` and `setEas` no longer routed), and `SeedExecutorRouterExtension` added. Routing read-back passed (29 selectors). Rollback record: `ignition/deployments/chain-11155420/routing-before.json`.
+- **9.4:** `verify-live` passes all 14 checks on I3a (`0x25B1…6FFd`). I3b (`0x803e…1aD3`) has no code yet, as expected for a counterfactual account; `verify-live` now reports that in one line instead of failing every check. Run it on I3b after its first publish.
+- **Open:** 9.5 (publishes from permapress on 0.6.9, after the app change request: 0.6.9 and the new executor address, in permapress and permapress-api's feed-publish), 9.6 (SDK config points at the new executor: that's the same env change), 9.7 (delete `.openzeppelin/` and `deployments/`).
+
