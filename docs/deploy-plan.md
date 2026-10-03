@@ -51,8 +51,7 @@ Plain scripts are still used where Ignition doesn't fit: one-off admin calls who
 
 ### P3: Keep solc 0.8.27 / `paris` for this rollout
 That's the bytecode the 116 tests and the mutation check cover.
-- Upgrading solc and the EVM target changes every deployed address (P2), so do it once, before any mainnet deploy.
-- That item stays in the migration plan's §6.
+- Upgrading solc and the EVM target changes every deployed address (P2), so do it once, before any mainnet deploy. That's step 11, after the OP Sepolia rollout.
 
 ### P4: Router changes are a script that falls back to printing calldata
 `scripts/replace_extension.ts` works on any network and handles both cases for the `EXTENSION_ROLE` holder:
@@ -166,6 +165,15 @@ The SDK calls the legacy `publishLocalId` ABI on the account (access-control pla
 
     Mark access-control plan steps 9–10 and §4 as done, pointing here.
 
+11. **Compiler upgrade, before any mainnet deploy** (P3). Not part of the OP Sepolia rollout; do it once, so the mainnet addresses are set once. **Gate:** step 9 done, and no mainnet deploy until this step is green.
+    - Bump `solidity.version` in `hardhat.config.ts` to the latest 0.8.x, and pin the `^0.8.0` / `^0.8.20` pragmas in `contracts/` to it.
+    - Choose `evmVersion` by what every target chain supports, not by solc's default (OP Stack chains have Cancun opcodes since Ecotone). Record the choice and why in P3.
+    - The `npmFilesToBuild` contracts (EAS, EntryPoint, thirdweb) build with these settings too: check `hardhat build` for new warnings beyond thirdweb's known payable-fallback one.
+    - Rerun the full test suite, the mutation check and the gas reports. Record the gas deltas here.
+    - Re-run `seed:predict-addresses` and replace the predicted addresses in §8. Update anything else that hardcodes them.
+    - Repeat the fork rehearsal (step 7) with the new bytecode.
+    - If OP Sepolia should match mainnet, redeploy there and repeat step 9's replace-extension and verify-live; otherwise note that testnet keeps the 0.8.27 build.
+
 ## 4. Client (seed-protocol-sdk) changes
 
 Copied from [access-control plan §4b](security/extension-access-control-plan.md#4b-client-seed-protocol-sdk-changes-required-before-rollout), reviewed at SDK `73cc8c8`. These must ship before or with step 9.3, or the paths below break:
@@ -205,7 +213,6 @@ The SDK also needs the new addresses (executor, extensions) from step 9.7.
 ## 7. Not in this plan
 
 These stay in [hardhat3-migration-plan.md §6](hardhat3-migration-plan.md#6-follow-ups-not-in-this-branch):
-- the solc/EVM upgrade (P3);
 - Solidity fuzz and invariant tests;
 - Slither/Aderyn;
 - OZ 5;

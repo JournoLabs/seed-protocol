@@ -226,7 +226,7 @@ The port is done when the Hardhat 3 run reaches the same **116 passing**.
   - bring back the `USE_LOCALHOST`-style checks
   - decide on `eas/`
 - Solidity fuzz tests for `multiPublish` cross-references (forge-std installed via npm, `*.t.sol` alongside the TS tests), and the invariant "EAS attester == account".
-- Upgrade solc from 0.8.27 to the latest 0.8.x and the EVM target from `paris`, and pin pragmas.
+- Upgrade solc from 0.8.27 to the latest 0.8.x and the EVM target from `paris`, and pin pragmas. Now [deploy-plan.md](deploy-plan.md) step 11.
 - Slither and Aderyn in CI with a triaged baseline.
 - OZ 4.9.5 → 5.x.
 - Optional: move from Mocha + ethers to `node:test` + viem.
